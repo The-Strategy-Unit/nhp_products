@@ -147,6 +147,11 @@ def connect_to_container(account_url: str, container_name: str) -> ContainerClie
         ClientAuthenticationError: If authentication fails
         ValueError: If URL or container name is invalid
     """
+    if not account_url:
+        raise ValueError("An account URL is required and cannot be empty")
+    if not container_name:
+        raise ValueError("A container name is required and cannot be empty")
+
     try:
         default_credential = DefaultAzureCredential()
         container_client = ContainerClient(
@@ -353,7 +358,7 @@ def load_data_file_old(
 # %%
 # TODO: at a later stage, we could package input args into a dict
 # to respect PLR0913 https://docs.astral.sh/ruff/rules/too-many-arguments/
-def load_model_run_results_file(  # noqa
+def load_model_run_results_file(
     container_client: ContainerClient,
     version: str,
     dataset: str,
@@ -361,9 +366,11 @@ def load_model_run_results_file(  # noqa
     run_id: str,
     activity_type: str,
     run_number: int,
+    batch_size: int | None = None,
 ) -> pd.DataFrame:
     """Loads full model results from a specific run from Azure.
-    Requires for the run to have had "--save-full-model-results" enabled
+    Requires for the run to have had "--save-full-model-results" enabled.
+    Can optionally load files in batches for efficiency.
 
     Args:
         container_client: Connection to container with data files
@@ -373,14 +380,15 @@ def load_model_run_results_file(  # noqa
         run_id: ID of the specific model run of that scenario
         activity_type: Type of activity - options include ip, op, aae.
         run_number: Which of the Monte Carlo simulation runs it is
+        batch_size: If provided, loads files in batches of this size (internal caching)
 
     Returns:
-        pd.DataFrame: DataFrame of the data
+        pd.DataFrame: DataFrame of the data for the requested run_number
 
     Raises:
-        ResourceNotFoundError: If the file doesn't exist
-        ValueError: If the file is not a valid parquet file
-        AzureError: If there's an issue downloading the file
+        ResourceNotFoundError: If the requested file doesn't exist
+        ValueError: If the requested file is not a valid parquet file
+        AzureError: If there's an issue downloading the requested file
     """
     path_components = [
         "full-model-results",
@@ -392,11 +400,73 @@ def load_model_run_results_file(  # noqa
         f"model_run={run_number}",
         "0.parquet",
     ]
-
     blob_name = "/".join(path_components)
-    data = load_parquet_file(container_client, blob_name)
 
-    return data
+    # If batch_size not provided, load single file directly
+    if batch_size is None:
+        return load_parquet_file(container_client, blob_name)
+
+    # For batch loading, we use a simple module-level cache
+    if not hasattr(load_model_run_results_file, "_cache"):
+        load_model_run_results_file._cache = {}
+
+    cache_key = f"{version}_{dataset}_{scenario_name}_{run_id}_{activity_type}"
+    cache = load_model_run_results_file._cache
+
+    # Check if the requested run is in cache
+    if cache_key in cache and run_number in cache[cache_key]:
+        return cache[cache_key][run_number]
+
+    # Initialize cache for this key if needed
+    if cache_key not in cache:
+        cache[cache_key] = {}
+
+    # Calculate batch range (centered on requested run_number if possible)
+    half_batch = batch_size // 2
+    batch_start = max(1, run_number - half_batch)
+    batch_end = batch_start + batch_size
+
+    # Track if we need to separately load the requested run
+    requested_run_loaded = False
+
+    # Load batch of files
+    for run in range(batch_start, batch_end):
+        run_path_components = [
+            "full-model-results",
+            version,
+            dataset,
+            scenario_name,
+            run_id,
+            activity_type,
+            f"model_run={run}",
+            "0.parquet",
+        ]
+        run_blob_name = "/".join(run_path_components)
+
+        try:
+            cache[cache_key][run] = load_parquet_file(container_client, run_blob_name)
+            if run == run_number:
+                requested_run_loaded = True
+        except (ResourceNotFoundError, ValueError, AzureError) as e:
+            # For the requested run, we need to propagate the error
+            if run == run_number:
+                raise
+            # Otherwise, skip errors for other files in batch
+            continue
+
+    # If we haven't loaded the requested run yet (might be outside batch range),
+    # load it directly
+    if not requested_run_loaded:
+        cache[cache_key][run_number] = load_parquet_file(container_client, blob_name)
+
+    # The requested run should now be in the cache, but check to be safe
+    if run_number not in cache[cache_key]:
+        # This should never happen given the logic above, but as a fallback:
+        raise ResourceNotFoundError(
+            f"Failed to load run {run_number} for {activity_type}"
+        )
+
+    return cache[cache_key][run_number]
 
 
 # %%

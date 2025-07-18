@@ -4,9 +4,7 @@ import pandas as pd
 import numpy as np
 
 
-def convert_results_format(
-    results: pd.DataFrame, include_baseline=True
-) -> pd.DataFrame:
+def convert_results_format(results: pd.DataFrame, include_baseline=True) -> pd.DataFrame:
     """Get principal and baseline from new results format parquet files.
     From results.generate_results_json agg_to_dict
 
