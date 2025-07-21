@@ -105,7 +105,7 @@ def get_azure_blobs(
 
 
 # %%
-def find_latest_version(container_client: ContainerClient, version: str) -> str | None:
+def find_latest_version(container_client: ContainerClient, version: str) -> str:
     """Finds latest version of data given a model version. Params and model results files
     do not include patch versions.
     For example, given version v3.0, if folders v3.0.1 and v3.0.0 exist,
@@ -128,7 +128,7 @@ def find_latest_version(container_client: ContainerClient, version: str) -> str 
                 list_of_folders.append(blob.name)
 
         if not list_of_folders:
-            return None
+            return "N/A"
 
         return sorted(list_of_folders)[-1].strip("/")
     except AzureError:
