@@ -19,6 +19,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from azure.storage.blob import ContainerClient
+from dotenv import load_dotenv
+
+from nhpy import az, process_data, process_results
+
+load_dotenv()
 
 # %% [markdown]
 # Aggregated model results path
@@ -27,20 +32,13 @@ from azure.storage.blob import ContainerClient
 # PRODUCT_run-scenario-with-full-results notebook copy the new_json_path variable that
 # gets output at the end and use that for the results_path variable here
 # %%
-# agg_results_folder = "aggregated-model-results/vX.X/RXX/scenarioname/datetime/"
-from dotenv import load_dotenv
-
-from nhpy import az, process_data, process_results
-
-load_dotenv()  # noqa
-agg_results_folder = os.environ["AZ_VALID_PATH"]
+agg_results_folder = "aggregated-model-results/vX.X/RXX/scenarioname/datetime/"
 
 # %% [markdown]
 # Setup
 
 # %%
 # Load env vars
-load_dotenv()
 account_url = os.getenv("AZ_STORAGE_EP", "")
 results_container = os.getenv("AZ_STORAGE_RESULTS", "")
 data_container = os.getenv("AZ_STORAGE_DATA", "")
