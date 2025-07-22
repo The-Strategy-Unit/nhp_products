@@ -122,7 +122,7 @@ for run in range(1, 257):
             model_runs[k] = []
         model_runs[k].append(v)
 end = time.perf_counter()
-print(f"All model runs were processed in {end - start:.3f} sec")
+print(f"All IP model runs were processed in {end - start:.3f} sec")
 
 # %%
 # Process model runs dictionary after the loop completes
