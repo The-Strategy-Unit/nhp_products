@@ -25,6 +25,7 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "pyyaml>=6.0.2",
     "cryptography>=44.0.0",
+    "tqdm>=4.67.1",
 
     # Auth
     "msal>=1.31.0",
@@ -54,9 +55,10 @@ dev = [
     # Development tools
     "pre-commit>=4.2.0",      # manage and maintain multi-language pre-commit hooks
     "ruff>=0.12.0",           # Linter & formatter
+    "ty>=0.0.1a14",           # Type checker
     "pyright>=1.1.0",         # Type checking
-    "ipdb>=0.13.13",          # IPython-enabled pdb 
-    "pytest>=8.4.1",          # Testing 
+    "ipdb>=0.13.13",          # IPython-enabled pdb
+    "pytest>=8.4.1",          # Testing
     # For Databricks
     "build>=1.2.2",           # Build frontend
     "setuptools>=80.7.1",     # Easily download, build, install, upgrade, and uninstall Python packages
