@@ -85,6 +85,12 @@ select = [
     "PL",                     # pylint rules
 ]
 
+[tool.ty.rules]
+invalid-argument-type = "warn"
+invalid-key = "warn"
+unresolved-reference = "warn"
+invalid-assignment = "warn"
+
 [tool.ruff.lint.isort]
 # isort configuration
 force-single-line = false
