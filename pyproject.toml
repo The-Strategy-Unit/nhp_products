@@ -93,6 +93,7 @@ combine-as-imports = true
 [tool.ruff.format]
 # Black-compatible formatting (default settings)
 quote-style = "double"
+exclude = ["*.ipynb"]
 
 # Pyright configuration
 [tool.pyright]
