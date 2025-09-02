@@ -1,11 +1,15 @@
 """
 This module is for producing detailed results for model v4.0.0.
 
-Assumes you have already authenticated via Azure CLI - [instructions here](https://github.com/The-Strategy-Unit/data_science/blob/fa37cbc01513127626364049124d71f06a35183a/blogs/posts/2024-05-22_storing-data-safely/azure_python.ipynb#L43-L47). Outputs into a `data/` folder the detailed aggregations of IP, OP, and AAE model results in CSV and Parquet formats.
+Assumes you have already authenticated via Azure CLI -
+[instructions here](https://github.com/The-Strategy-Unit/data_science/blob/fa37cbc01513127626364049124d71f06a35183a/blogs/posts/2024-05-22_storing-data-safely/azure_python.ipynb#L43-L47).
+Outputs into a `data/` folder the detailed aggregations of IP, OP, and AAE model
+results in CSV and Parquet formats.
 
 Also assumes the scenario has already been run with `full_model_results = True`.
 
-You can check if this has happened using `nhpy.check_full_results`, and if not, produce full model results using `nhpy.run_full_results`
+You can check if this has happened using `nhpy.check_full_results`, and if not,
+produce full model results using `nhpy.run_full_results`
 """
 
 # %%
