@@ -5,6 +5,8 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 
+n_runs = 256
+
 
 # this is from model.helpers.age_groups
 def age_groups(age: pd.Series) -> pd.Series:
@@ -90,8 +92,6 @@ def process_ip_activity_avoided(data: pd.DataFrame) -> pd.DataFrame:
         The processed and aggregated data
     """
 
-    data["age_group"] = age_groups(data["age"])
-    data = add_pod_to_data_ip(data)
     los_groups_aa = defaultdict(
         lambda: "1+ days",
         {
@@ -146,12 +146,13 @@ def process_model_runs_dict(
     for k, v in model_runs.items():
         v_ = np.array(v)
         if not all_runs_kept:
-            # make sure all 256 runs are accounted for! Some groups don't show up in the individual model runs.
-            if len(v_) < 256:
-                zeros = np.zeros(256 - len(v_))
+            # make sure all 256 runs are accounted for! Some groups don't show up
+            # in the individual model runs.
+            if len(v_) < n_runs:
+                zeros = np.zeros(n_runs - len(v_))
                 v_ = np.concatenate((v_, zeros))
-        if len(v_) != 256:
-            raise ValueError(f"Length of array for {k} is not equal to 256")
+        if len(v_) != n_runs:
+            raise ValueError(f"Length of array for {k} is not equal to n_runs")
         x = np.percentile(v_, [10, 50, 90])
         model_runs_df.loc[k, "lwr_ci"] = x[0]
         model_runs_df.loc[k, "median"] = x[1]
@@ -162,8 +163,9 @@ def process_model_runs_dict(
 
 
 def process_ip_detailed_results(data: pd.DataFrame) -> pd.DataFrame:
-    """Process the IP detailed results, adding pod and age_group, and grouping by sitetret,
-    age_group, sex, pod, tretspef, los_group, maternity_delivery_in_spell, and measure
+    """Process the IP detailed results, adding pod and age_group, and grouping by
+    sitetret, age_group, sex, pod, tretspef, los_group, maternity_delivery_in_spell,
+    and measure
 
     Args:
         data: the IP activity in each Monte Carlo simulation
@@ -171,9 +173,6 @@ def process_ip_detailed_results(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         The processed and aggregated data
     """
-
-    data["age_group"] = age_groups(data["age"])
-    data = add_pod_to_data_ip(data)
     los_groups_detailed = defaultdict(
         lambda: "22+ days",
         {
@@ -228,8 +227,8 @@ def process_ip_detailed_results(data: pd.DataFrame) -> pd.DataFrame:
 
 
 def process_op_detailed_results(data: pd.DataFrame) -> pd.DataFrame:
-    """Process the OP detailed results, adding pod and age_group, and grouping by sitetret,
-    age_group, sex, pod, tretspef, and measure
+    """Process the OP detailed results, adding pod and age_group, and grouping by
+    sitetret, age_group, sex, pod, tretspef, and measure
 
     Args:
         data: the IP activity in each Monte Carlo simulation
@@ -238,8 +237,6 @@ def process_op_detailed_results(data: pd.DataFrame) -> pd.DataFrame:
         The processed and aggregated data
     """
 
-    data["age_group"] = age_groups(data["age"])
-    data = add_pod_to_data_op(data)
     # From aggregate
     measures = data.melt(["rn"], ["attendances", "tele_attendances"], "measure")
     data = (
@@ -255,8 +252,8 @@ def process_op_detailed_results(data: pd.DataFrame) -> pd.DataFrame:
 
 
 def process_op_converted_from_ip(data: pd.DataFrame) -> pd.Series:
-    """Process the OP activity converted from IP, adding pod and age_group, and grouping
-    by sitetret, age_group, sex, pod, tretspef, and measure.
+    """Process the OP activity converted from IP, adding pod and age_group, and
+    grouping by sitetret, age_group, sex, pod, tretspef, and measure.
 
     Args:
         data: the OP activity converted from IP in each Monte Carlo simulation
@@ -286,7 +283,8 @@ def combine_converted_with_main_results(
     with the main OP/AAE activity results
 
     Args:
-        df_converted: the OP/AAE activity converted from IP in each Monte Carlo simulation
+        df_converted: the OP/AAE activity converted from IP in each Monte Carlo
+        simulation
         df: the OP/AAE activity in each Monte Carlo simulation
 
     Returns:
@@ -318,8 +316,6 @@ def process_aae_results(data: pd.DataFrame) -> pd.DataFrame:
         The processed and aggregated data
     """
 
-    data["age_group"] = age_groups(data["age"])
-    data["pod"] = "aae_type-" + data["aedepttype"]
     data["measure"] = "walk-in"
     data.loc[data["is_ambulance"], "measure"] = "ambulance"
 
@@ -337,8 +333,9 @@ def process_aae_results(data: pd.DataFrame) -> pd.DataFrame:
 
 
 def process_aae_converted_from_ip(data: pd.DataFrame) -> pd.Series:
-    """Process the AAE SDEC activity converted from IP, adding pod and age_group, and grouping by sitetret,
-    age_group, pod, aedepttype, attendance_category, acuity and measure.
+    """Process the AAE SDEC activity converted from IP, adding pod and age_group,
+    and grouping by sitetret, age_group, pod, aedepttype, attendance_category, acuity
+    and measure.
 
     Args:
         data: the AAE SDEC activity converted from IP in each Monte Carlo simulation
