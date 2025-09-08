@@ -12,6 +12,8 @@ For many of the scripts to work, you will need environment variables in a `.env`
 
 We use `uv` for dependency management in this repository. The instructions in this README will assume that you have this installed.
 
+Scripts are likely to run faster if you are _not_ connected to the VPN.
+
 ## Utilities
 
 ### Check full results
