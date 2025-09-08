@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 from azure.storage.blob import ContainerClient
 from dotenv import load_dotenv
+from tqdm import tqdm
 
 from nhpy import az, process_data, process_results
 
@@ -102,7 +103,7 @@ batch_size = 20
 
 # Process all runs
 start = time.perf_counter()
-for run in range(1, 257):
+for run in tqdm(range(1, 257), desc="IP"):
     # Load with batch functionality - this will cache surrounding runs
     df = az.load_model_run_results_file(
         container_client=results_connection,
@@ -211,7 +212,7 @@ batch_size = 20
 
 # Process all runs
 start = time.perf_counter()
-for run in range(1, 257):
+for run in tqdm(range(1, 257), desc="OP"):
     # Load with batch functionality - this will cache surrounding runs
     df = az.load_model_run_results_file(
         container_client=results_connection,
@@ -314,7 +315,7 @@ batch_size = 20
 
 # Process all runs
 start = time.perf_counter()
-for run in range(1, 257):
+for run in tqdm(range(1, 257), desc="A&E"):
     # Load with batch functionality - this will cache surrounding runs
     df = az.load_model_run_results_file(
         container_client=results_connection,
