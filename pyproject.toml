@@ -85,6 +85,9 @@ select = [
     "PL",                     # pylint rules
 ]
 
+[tool.ty.src]
+exclude = ["notebooks", "tests"]
+
 [tool.ty.rules]
 invalid-argument-type = "warn"
 invalid-key = "warn"
