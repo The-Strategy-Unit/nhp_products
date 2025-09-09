@@ -75,6 +75,7 @@ build-backend = "setuptools.build_meta"
 [tool.ruff]
 line-length = 90
 target-version = "py312"
+exclude = ["*.ipynb"]
 
 [tool.ruff.lint]
 # Simple rules: pylint + isort
@@ -84,6 +85,7 @@ select = [
     "I",                      # isort (import sorting)
     "PL",                     # pylint rules
 ]
+exclude = ["*.ipynb"]
 
 [tool.ty.src]
 exclude = ["notebooks", "tests"]
