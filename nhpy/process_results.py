@@ -1,7 +1,7 @@
 """Functions to process results files"""
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 
 def convert_results_format(results: pd.DataFrame, include_baseline=True) -> pd.DataFrame:
@@ -9,7 +9,8 @@ def convert_results_format(results: pd.DataFrame, include_baseline=True) -> pd.D
     From results.generate_results_json agg_to_dict
 
     Args:
-        results (pd.DataFrame): Processes results with columns "model_run" and "value", replacing these with columns "baseline" and "principal"
+        results (pd.DataFrame): Processes results with columns "model_run" and
+        "value", replacing these with columns "baseline" and "principal"
     """
     df = results.set_index("model_run")
     if include_baseline:
@@ -60,10 +61,12 @@ def add_principal(model_results: pd.DataFrame) -> pd.DataFrame:
 
 
 def agg_default(df: pd.DataFrame) -> pd.DataFrame:
-    """Groups model results dataframe by pod and measure, summing the baseline and the principal columns
+    """Groups model results dataframe by pod and measure, summing the baseline and
+    the principal columns
 
     Args:
-        df (pd.DataFrame): Model results containing the columns 'pod', 'measure', 'baseline' and 'principal'
+        df (pd.DataFrame): Model results containing the columns 'pod', 'measure',
+        'baseline' and 'principal'
 
     Returns:
         _type_: _description_
@@ -94,10 +97,13 @@ def process_default(full_results: dict, trust: str) -> pd.DataFrame:
 
 
 def compare_results(results_dict: dict, trust: str) -> pd.DataFrame:
-    """Helper function for the qa_model_runs notebook. Compares model results for the same provider/scenario run on two different model versions, and calculates differences between pods
+    """Helper function for the qa_model_runs notebook. Compares model results for
+    the same provider/scenario run on two different model versions, and calculates
+    differences between pods
 
     Args:
-        results_dict (dict): Dictionary containing the results for the two runs to be compared
+        results_dict (dict): Dictionary containing the results for the two runs
+                            to be compared
         trust (str): Provider code for the trust
 
     Returns:
@@ -121,7 +127,8 @@ def compare_results(results_dict: dict, trust: str) -> pd.DataFrame:
 
 
 def agg_stepcounts(stepcounts: pd.DataFrame) -> pd.DataFrame:
-    """Aggregates step_counts in old format of results JSON, grouping by 'change_factor', 'measure' and 'strategy' and summing the 'principal' column
+    """Aggregates step_counts in old format of results JSON, grouping by 'change_factor',
+    'measure' and 'strategy' and summing the 'principal' column
     TODO: Deprecate function; we should be working with Parquet format of model results
 
     Args:
@@ -152,11 +159,52 @@ def process_stepcounts(full_results: dict) -> pd.DataFrame:
     return agg_stepcounts(df_with_principal)
 
 
-def compare_stepcounts(results_dict: dict, trust: str) -> pd.DataFrame:
-    """Helper function for the qa_model_runs notebook. Compares step_counts in model results for the same provider/scenario run on two different model versions, and calculates differences
+def compare_default(
+    df1: pd.DataFrame,
+    df2: pd.DataFrame,
+) -> pd.DataFrame:
+    """Compares two Dataframes with format produced by convert_results_format function,
+    working out the % diff between the baseline and principal (mean) for each dataframe
+    and comparing them
 
     Args:
-        results_dict (dict): Dictionary containing the results for the two runs to be compared
+        df1 (pd.DataFrame): First dataframe to be compared
+        df2 (pd.DataFrame): First dataframe to be compared
+
+    Returns:
+        pd.DataFrame: Combined dataframe with both model results compared
+    """
+    for df in df1, df2:
+        df["%_diff"] = abs(
+            df[["mean", "baseline"]]
+            .pct_change(fill_method=None, axis=1)["baseline"]
+            .round(4)
+            .fillna(0)
+        )
+    cols_to_drop = [
+        "dataset",
+        "scenario",
+        "app_version",
+        "create_datetime",
+        "model_runs",
+    ]
+    merged = pd.merge(
+        df1.drop(columns=cols_to_drop),
+        df2.drop(columns=cols_to_drop),
+        on=["pod", "sitetret", "measure"],
+        suffixes=[f"_{df1['scenario'].iloc[0]}", f"_{df2['scenario'].iloc[0]}"],
+    ).sort_index(axis=1)
+    return merged
+
+
+def compare_stepcounts(results_dict: dict, trust: str) -> pd.DataFrame:
+    """Helper function for the qa_model_runs notebook. Compares step_counts in
+    model results for the same provider/scenario run on two different model versions,
+    and calculates differences
+
+    Args:
+        results_dict (dict): Dictionary containing the results for the two runs to
+        be compared
         trust (str): Provider code for the trust
 
     Returns:
@@ -182,7 +230,8 @@ def compare_stepcounts(results_dict: dict, trust: str) -> pd.DataFrame:
 
 
 def create_time_profiles(horizon_years: int, year: int) -> dict[str, callable]:
-    """Create time profile functions. Creates time_profiles_dict which is taken by the get_time_profiles_factor function
+    """Create time profile functions. Creates time_profiles_dict which is taken by
+    the get_time_profiles_factor function
 
     :param horizon_years: how many years the model is running over
     :type horizon_years: int
@@ -202,10 +251,13 @@ def create_time_profiles(horizon_years: int, year: int) -> dict[str, callable]:
 
 def get_time_profiles_factor(time_profile_type, time_profiles_dict, baseline_year):
     """
-    Gets factor to use for each year, given the time_profile type selected by the user, the baseline year, and the horizon year
+    Gets factor to use for each year, given the time_profile type selected by the user,
+    the baseline year, and the horizon year
 
     Args:
-        time_profile_type (str): The "time profile" type specified in the params. Options are "stepXXXX" where XXXX is the year the step change occurs, "linear", "front_loaded" or "back_loaded"
+        time_profile_type (str): The "time profile" type specified in the params. Options
+        are "stepXXXX" where XXXX is the year the step change occurs, "linear",
+        "front_loaded" or "back_loaded"
         time_profiles_dict (dict): The dict created by the create_time_profiles function
         baseline_year (int): The baseline year, from the results JSON file
 
