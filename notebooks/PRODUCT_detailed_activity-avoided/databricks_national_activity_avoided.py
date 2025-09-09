@@ -3,9 +3,13 @@
 # MAGIC # Population based model
 # MAGIC ## Link activity avoided back to original data
 # MAGIC
-# MAGIC This notebook uses Databricks to link the activity avoided saved from each Monte Carlo simulation back to the original data, aggregating the inpatients activity avoided by HRG, an indicator on whether the length of stay from admission to discharge is zero, and pod.
+# MAGIC This notebook uses Databricks to link the activity avoided saved from each
+# Monte Carlo simulation back to the original data, aggregating the inpatients activity
+# avoided by HRG, an indicator on whether the length of stay from admission to discharge
+# is zero, and pod.
 # MAGIC
-# MAGIC For this notebook to work we first need to have run the national_run notebook from nhp_model, with save_full_model_results set to TRUE for inpatients.
+# MAGIC For this notebook to work we first need to have run the national_run notebook
+# from nhp_model, with save_full_model_results set to TRUE for inpatients.
 # MAGIC
 # MAGIC This notebook currently only works for IP, not OP or AAE.
 
@@ -40,8 +44,8 @@ with open(f"{params_path}/params.json", "rb") as f:
 scenario_name = params["scenario"]
 
 # COMMAND ----------
-
-data_version = results_folder.split("/")[1] + ".0" # Check that there hasn't been a patch release of data - this is very rare
+# Check that there hasn't been a patch release of data - this is very rare
+data_version = results_folder.split("/")[1] + ".0"
 data_path = f"/Volumes/nhp/model_data/files/{data_version}"
 
 # COMMAND ----------
@@ -83,23 +87,29 @@ for run in range(1, 257):
 # COMMAND ----------
 
 model_runs_df = process_data.process_model_runs_dict(
-    model_runs, columns=["pod", "los_group", "sushrg", "measure"], all_runs_kept = True
+    model_runs, columns=["pod", "los_group", "sushrg", "measure"],
+    all_runs_kept = True
 )
-notebook_admissions = model_runs_df.loc[(slice(None), slice(None), slice(None), "admissions")].sum().loc["mean"]
+notebook_admissions = model_runs_df.loc[
+    (slice(None), slice(None), slice(None), "admissions")].sum().loc["mean"]
 notebook_admissions
 
 # COMMAND ----------
 
-# Checking results of this notebook against "principal" from main model results avoided_activity
+# Checking results of this notebook against "principal" from main model results
+# avoided_activity
 
 activity_avoided = pd.read_parquet(f"{params_path}/avoided_activity.parquet")
-assert (notebook_admissions *100) == (activity_avoided[activity_avoided["measure"] == "admissions"]["value"].sum()/256)
+assert (notebook_admissions *100) == (
+    activity_avoided[activity_avoided["measure"] == "admissions"]["value"].sum()/256)
 
 # COMMAND ----------
 
 
-notebook_beddays = model_runs_df.loc[(slice(None), slice(None), slice(None), "beddays")].sum().loc["mean"]
-assert (notebook_beddays * 100) == (activity_avoided[activity_avoided["measure"] == "beddays"]["value"].sum()/256)
+notebook_beddays = model_runs_df.loc[
+    (slice(None), slice(None), slice(None), "beddays")].sum().loc["mean"]
+assert (notebook_beddays * 100) == (
+    activity_avoided[activity_avoided["measure"] == "beddays"]["value"].sum()/256)
 
 # COMMAND ----------
 
