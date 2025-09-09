@@ -363,7 +363,7 @@ def load_data_file_old(
 # %%
 # TODO: at a later stage, we could package input args into a dict
 # to respect PLR0913 https://docs.astral.sh/ruff/rules/too-many-arguments/
-def load_model_run_results_file(
+def load_model_run_results_file(  # noqa PLR0913
     container_client: ContainerClient,
     version: str,
     dataset: str,
