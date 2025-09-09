@@ -272,5 +272,5 @@ def get_time_profiles_factor(time_profile_type, time_profiles_dict, baseline_yea
         step_year = int(time_profile_type[4:]) - baseline_year
         factor = time_profiles_dict["step"](step_year)
     else:
-        factor = time_profiles_dict[time_profile_type]
+        factor = time_profiles_dict[time_profile_type](baseline_year)
     return factor
