@@ -1,6 +1,7 @@
 """Functions to process model data in format suitable for model results"""
 
 from collections import defaultdict
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -153,7 +154,7 @@ def process_model_runs_dict(
                 v_ = np.concatenate((v_, zeros))
         if len(v_) != n_runs:
             raise ValueError(f"Length of array for {k} is not equal to n_runs")
-        x = np.percentile(v_, [10, 50, 90])
+        x = cast(np.ndarray, np.percentile(v_, [10, 50, 90]))
         model_runs_df.loc[k, "lwr_ci"] = x[0]
         model_runs_df.loc[k, "median"] = x[1]
         model_runs_df.loc[k, "mean"] = v_.mean()
