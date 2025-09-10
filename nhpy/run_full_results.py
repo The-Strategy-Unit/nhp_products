@@ -42,6 +42,9 @@ from azure.core.exceptions import (
     ResourceNotFoundError,
     ServiceRequestError,
 )
+from jsonschema import ValidationError
+from nhp.aci.run_model.helpers import validate_params
+from traitlets import Bool
 
 from nhpy.config import Colours, Constants, ExitCodes
 from nhpy.types import ScenarioPaths
@@ -114,6 +117,31 @@ def _prepare_full_results_params(params: dict[str, object]) -> dict[str, object]
     logger.debug(f"Prepared parameters for new scenario: {new_params['scenario']}")
 
     return new_params
+
+
+# %%
+
+
+def _validate_params(params: dict[str, object]) -> None:
+    """Validates params against published schema for a specific model version
+
+    Args:
+        params (dict[str, object]): NHP model scenario parameters
+
+    Raises:
+        ValidationError: For schema validation errors
+
+    """
+
+    ver = str(params["app_version"])
+    logger.info(f"Validating params against schema {ver}...")
+
+    try:
+        validate_params(params, ver)
+
+    except ValidationError as e:
+        logger.error(f"_validate_params(): Params validation failed: {e}")
+        raise
 
 
 # %%
