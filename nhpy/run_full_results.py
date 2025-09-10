@@ -31,6 +31,7 @@ import argparse
 import json
 import re
 import sys
+import time
 from logging import INFO
 from pathlib import Path
 from textwrap import dedent
@@ -42,7 +43,9 @@ from azure.core.exceptions import (
     ResourceNotFoundError,
     ServiceRequestError,
 )
+from azure.identity import CredentialUnavailableError
 from jsonschema import ValidationError
+from nhp.aci.run_model import create_model_run
 from nhp.aci.run_model.helpers import validate_params
 from traitlets import Bool
 
@@ -133,14 +136,38 @@ def _validate_params(params: dict[str, object]) -> None:
 
     """
 
-    ver = str(params["app_version"])
-    logger.info(f"Validating params against schema {ver}...")
+    version = str(params["app_version"])
+    logger.info(f"Validating params against schema {version}...")
 
     try:
-        validate_params(params, ver)
+        validate_params(params, version)
 
     except ValidationError as e:
         logger.error(f"_validate_params(): Params validation failed: {e}")
+        raise
+
+
+# %%
+
+
+def _start_container(params: dict[str, object]) -> dict[str, str]:
+    """Starts Azure container using submitted parameters, with save_full_model_results
+    set to True
+
+    Args:
+        params (dict[str, object]): NHP model scenario parameters
+
+    Returns:
+        dict[str, str]: Metadata for container
+    """
+    logger.info("Starting container for full model results run...")
+    try:
+        metadata = create_model_run(
+            params, str(params["app_version"]), save_full_model_results=True
+        )
+        return metadata
+    except CredentialUnavailableError as e:
+        logger.error(f"_start_container(): Unable to start container: {e}")
         raise
 
 
