@@ -47,6 +47,7 @@ from azure.identity import CredentialUnavailableError
 from jsonschema import ValidationError
 from nhp.aci.run_model import create_model_run
 from nhp.aci.run_model.helpers import validate_params
+from nhp.aci.status.model_run_status import get_model_run_status
 from traitlets import Bool
 
 from nhpy.config import Colours, Constants, ExitCodes
@@ -169,6 +170,45 @@ def _start_container(params: dict[str, object]) -> dict[str, str]:
     except CredentialUnavailableError as e:
         logger.error(f"_start_container(): Unable to start container: {e}")
         raise
+
+
+# %%
+
+
+def _track_container_status(metadata: dict[str, str]) -> dict[str, str]:
+    """Checks container status every 30 seconds to check on model run progress
+
+    Args:
+        metadata (dict[str, str]): Metadata for submitted model run
+
+    Returns:
+        dict[str,str]: Metadata for container instance
+    """
+    while True:
+        try:
+            status = get_model_run_status(metadata["id"])
+        except Exception as e:
+            logger.error(
+                f"Error fetching container status: {e}. Retrying in 30 seconds..."
+            )
+            time.sleep(30)
+            continue
+        if status:
+            state = status.get("state")
+            detail_status = status.get("detail_status")
+            logger.info(
+                f"Container state: {state}: {detail_status}",
+            )
+            # Check for completion
+            if state == "Terminated":
+                if detail_status == "Completed":
+                    logger.info("✅ Container completed successfully.")
+                else:
+                    logger.error(f"❌ Container terminated with status {detail_status}")
+                return status
+
+            # Otherwise, wait and poll again
+        time.sleep(30)
 
 
 # %%
