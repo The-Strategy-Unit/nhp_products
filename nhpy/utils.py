@@ -61,6 +61,7 @@ def configure_logging(level=logging.INFO):
     logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(
         logging.WARNING
     )
+    logging.getLogger("azure.identity").setLevel(logging.WARNING)
 
     # Clear existing handlers
     for handler in root_logger.handlers[:]:
