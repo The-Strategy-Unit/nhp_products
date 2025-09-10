@@ -216,7 +216,7 @@ def _track_container_status(metadata: dict[str, str]):
                     logger.error(f"❌ Container terminated with status {detail_status}")
 
             # Otherwise, wait and poll again
-        time.sleep(30)
+        time.sleep(120)
 
 
 # %%
