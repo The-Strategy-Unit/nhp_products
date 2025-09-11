@@ -181,12 +181,16 @@ def _start_container(params: dict[str, object]) -> dict[str, str]:
 
 
 def _track_container_status(metadata: dict[str, str]):
-    """Checks container status every 30 seconds to check on model run progress
+    """Checks container status every 120 seconds to check on model run progress
 
     Args:
         metadata (dict[str, str]): Metadata for submitted model run
 
     """
+    logger.info(
+        f"Checking container status every 120 seconds... ⌚",
+    )
+    time.sleep(120)
     while True:
         try:
             status = get_model_run_status(metadata["id"])
@@ -199,23 +203,24 @@ def _track_container_status(metadata: dict[str, str]):
         if status:
             state = status.get("state")
             detail_status = status.get("detail_status")
-            logger.info(
-                f"Container state: {state}: {detail_status}",
-            )
             if state == "Running":
                 runs_completed = status.get("complete")
                 model_runs = status.get("model_runs")
                 logger.info(
                     f"Container state: {state}: {runs_completed} of {model_runs}",
                 )
-            # Check for completion
-            if state == "Terminated":
+            # Check for completion and exit
+            elif state == "Terminated":
                 if detail_status == "Completed":
                     logger.info("✅ Container completed successfully.")
                 else:
                     logger.error(f"❌ Container terminated with status {detail_status}")
-
-            # Otherwise, wait and poll again
+                return
+            else:
+                logger.info(
+                    f"Container state: {state}: {detail_status}",
+                )
+            # Wait and poll again
         time.sleep(120)
 
 
@@ -271,7 +276,6 @@ def run_scenario_with_full_results(
         # Validate parameters against schema
         _validate_params(mod_params)
 
-        # Start container
         container_metadata = _start_container(mod_params)
 
         # Track container status
@@ -281,7 +285,6 @@ def run_scenario_with_full_results(
 
         # Construct and return result paths
         full_results_params = _construct_results_path(params=mod_params)
-
         return full_results_params
 
 
