@@ -233,7 +233,7 @@ def compare_stepcounts(results_dict: dict, trust: str) -> pd.DataFrame:
 
 def create_time_profiles(
     horizon_years: int, year: int
-) -> dict[str, Callable[[int], float]]:
+) -> dict[str, float | Callable[[int], float]]:
     """Create time profile functions. Creates time_profiles_dict which is taken by
     the get_time_profiles_factor function
 
@@ -244,11 +244,11 @@ def create_time_profiles(
     :rtype: dict[str, callable]
     """
     return {
-        "none": lambda _: 1.0,
-        "linear": lambda _: year / horizon_years,
-        "front_loaded": lambda _: np.sqrt(horizon_years**2 - (horizon_years - year) ** 2)
+        "none": 1.0,
+        "linear": year / horizon_years,
+        "front_loaded": np.sqrt(horizon_years**2 - (horizon_years - year) ** 2)
         / horizon_years,
-        "back_loaded": lambda _: 1 - np.sqrt(horizon_years**2 - year**2) / horizon_years,
+        "back_loaded": 1 - np.sqrt(horizon_years**2 - year**2) / horizon_years,
         "step": lambda y: float(year >= y),
     }
 
@@ -272,5 +272,5 @@ def get_time_profiles_factor(time_profile_type, time_profiles_dict, baseline_yea
         step_year = int(time_profile_type[4:]) - baseline_year
         factor = time_profiles_dict["step"](step_year)
     else:
-        factor = time_profiles_dict[time_profile_type](baseline_year)
+        factor = time_profiles_dict[time_profile_type]
     return factor
