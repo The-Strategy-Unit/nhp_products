@@ -28,9 +28,8 @@ Exit codes:
 
 # %%
 import argparse
-import json
-import re
 import sys
+import time
 from logging import INFO
 from pathlib import Path
 from textwrap import dedent
@@ -42,6 +41,11 @@ from azure.core.exceptions import (
     ResourceNotFoundError,
     ServiceRequestError,
 )
+from azure.identity import CredentialUnavailableError
+from jsonschema import ValidationError
+from nhp.aci.run_model import create_model_run
+from nhp.aci.run_model.helpers import validate_params
+from nhp.aci.status.model_run_status import get_model_run_status
 
 from nhpy.config import Colours, Constants, ExitCodes
 from nhpy.types import ScenarioPaths
@@ -117,75 +121,112 @@ def _prepare_full_results_params(params: dict[str, object]) -> dict[str, object]
 
 
 # %%
-def _submit_api_request(
-    params: dict[str, object],
-    api_url: str,
-    api_key: str,
-    timeout: int = 30,
-) -> None:
-    """
-    Submit API request to run scenario with full model results.
+
+
+def _validate_params(params: dict[str, object]) -> None:
+    """Validates params against published schema for a specific model version
 
     Args:
-        params: Scenario parameters
-        api_url: API endpoint URL
-        api_key: API authentication key
-        timeout: Request timeout in seconds
-
-    Returns:
-        str: The create_datetime from the API response
+        params (dict[str, object]): NHP model scenario parameters
 
     Raises:
-        requests.RequestException: For API request failures
-        ValueError: For invalid API responses
+        ValidationError: For schema validation errors
+
     """
-    logger.info("Submitting API request for full results run...")
+
+    version = str(params["app_version"])
+    logger.info(f"Validating params against schema {version}...")
 
     try:
-        response = requests.post(
-            url=api_url,
-            params={
-                "app_version": params["app_version"],
-                "code": api_key,
-                "save_full_model_results": "True",
-            },
-            json=params,
-            timeout=timeout,
-        )
-        response.raise_for_status()
+        validate_params(params, version)
 
-    except requests.RequestException as e:
-        logger.error(f"_submit_api_request():API request failed: {e}")
+    except ValidationError as e:
+        logger.error(f"_validate_params(): Params validation failed: {e}")
         raise
 
-    # Parse response
+
+# %%
+
+
+def _start_container(params: dict[str, object]) -> dict[str, str]:
+    """Starts Azure container using submitted parameters, with save_full_model_results
+    set to True
+
+    Args:
+        params (dict[str, object]): NHP model scenario parameters
+
+    Returns:
+        dict[str, str]: Metadata for container
+    """
+    logger.info("Starting container for full model results run...")
     try:
-        response_data = response.json()
-        server_datetime = response_data["create_datetime"]
-        response_data["create_datetime"] = response_data["original_datetime"]
+        metadata = create_model_run(
+            params, str(params["app_version"]), save_full_model_results=True
+        )
         logger.info(
             dedent(
                 f"""
-            ✅ API request successful 🥳
-            {Colours.GREEN}Server datetime: {server_datetime}{Colours.RESET}
-            Original datetime: {response_data["original_datetime"]}"""
+            ✅ Container successfully started 🥳
+            {Colours.GREEN}Create datetime: {metadata["create_datetime"]}{Colours.RESET}
+            Container ID: {metadata["id"]}"""
             ).strip()
         )
+        return metadata
+    except CredentialUnavailableError as e:
+        logger.error(f"_start_container(): Unable to start container: {e}")
+        raise
 
-        return server_datetime
 
-    except (json.JSONDecodeError, KeyError) as e:
-        logger.error(
-            f"_submit_api_request():API returned non-JSON response: {response.text[:200]}"
-        )
-        raise ValueError(f"Invalid API response format: {e}") from e
+# %%
+
+
+def _track_container_status(metadata: dict[str, str]):
+    """Checks container status every 120 seconds to check on model run progress
+
+    Args:
+        metadata (dict[str, str]): Metadata for submitted model run
+
+    """
+    logger.info(
+        f"Checking container status every 120 seconds... ⌚",
+    )
+    time.sleep(120)
+    while True:
+        try:
+            status = get_model_run_status(metadata["id"])
+        except Exception as e:
+            logger.error(
+                f"Error fetching container status: {e}. Retrying in 120 seconds..."
+            )
+            time.sleep(120)
+            continue
+        if status:
+            state = status.get("state")
+            detail_status = status.get("detail_status")
+            if state == "Running":
+                runs_completed = status.get("complete")
+                model_runs = status.get("model_runs")
+                logger.info(
+                    f"Container state: {state}: {runs_completed} of {model_runs}",
+                )
+            # Check for completion and exit
+            elif state == "Terminated":
+                if detail_status == "Completed":
+                    logger.info("✅ Container completed successfully.")
+                else:
+                    logger.error(f"❌ Container terminated with status {detail_status}")
+                return
+            else:
+                logger.info(
+                    f"Container state: {state}: {detail_status}",
+                )
+            # Wait and poll again
+        time.sleep(120)
 
 
 # %%
 def run_scenario_with_full_results(
     results_path: str,
-    api_url: str | None = None,
-    api_key: str | None = None,
     account_url: str | None = None,
     container_name: str | None = None,
 ) -> ScenarioPaths:
@@ -197,8 +238,6 @@ def run_scenario_with_full_results(
 
     Args:
         results_path: Path to existing aggregated results
-        api_url: API endpoint URL (default: from environment)
-        api_key: API authentication key (default: from environment)
         account_url: Azure Storage account URL (default: from environment)
         container_name: Azure Storage container name (default: from environment)
 
@@ -211,10 +250,8 @@ def run_scenario_with_full_results(
         Various Azure exceptions: For authentication, network, or permission issues
     """
     # Load environment variables if not provided
-    if not all([api_url, api_key, account_url, container_name]):
+    if not all([account_url, container_name]):
         env_config = _load_environment_variables()
-        api_url = api_url or env_config["API_URL"]
-        api_key = api_key or env_config["API_KEY"]
         account_url = account_url or env_config["AZ_STORAGE_EP"]
         container_name = container_name or env_config["AZ_STORAGE_RESULTS"]
 
@@ -236,20 +273,18 @@ def run_scenario_with_full_results(
         # Prepare parameters for full results run
         mod_params = _prepare_full_results_params(params=params)
 
-        # Submit API request
-        if api_url and api_key:
-            server_datetime = _submit_api_request(
-                params=mod_params,
-                api_url=api_url,
-                api_key=api_key,
-                timeout=Constants.TIMEOUT_SEC,
-            )
+        # Validate parameters against schema
+        _validate_params(mod_params)
 
-        mod_params["create_datetime"] = server_datetime
+        container_metadata = _start_container(mod_params)
+
+        # Track container status
+        _track_container_status(container_metadata)
+
+        mod_params["create_datetime"] = container_metadata["create_datetime"]
 
         # Construct and return result paths
         full_results_params = _construct_results_path(params=mod_params)
-
         return full_results_params
 
 
@@ -271,8 +306,6 @@ def main() -> int:
         help="Path to existing aggregated results \
         (e.g. 'aggregated-model-results/v3.5/RXX/test/20250101_100000/')",
     )
-    parser.add_argument("--api-url", help="API endpoint URL")
-    parser.add_argument("--api-key", help="API authentication key")
     parser.add_argument("--account-url", help="Azure Storage account URL")
     parser.add_argument("--container", help="Azure Storage container name")
 
@@ -281,14 +314,12 @@ def main() -> int:
     try:
         result_paths = run_scenario_with_full_results(
             results_path=args.results_path,
-            api_url=args.api_url,
-            api_key=args.api_key,
             account_url=args.account_url,
             container_name=args.container,
         )
 
-        logger.info("🎉 Scenario submitted successfully!")
-        logger.info(f"Monitor results at: {result_paths['full_results_path']}")
+        logger.info("🎉 Full results for scenario completed successfully!")
+        logger.info(f"Results available at: {result_paths['full_results_path']}")
 
         return ExitCodes.SUCCESS_CODE
 
@@ -300,6 +331,8 @@ def main() -> int:
         ResourceNotFoundError,
         HttpResponseError,
         ServiceRequestError,
+        CredentialUnavailableError,
+        ValidationError,
     ) as e:
         logger.error(f"main():Error: {e}")
         return ExitCodes.EXCEPTION_CODE

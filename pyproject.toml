@@ -10,27 +10,24 @@ dependencies = [
     "azure-core>=1.32.0",
     "azure-identity>=1.17.1",
     "azure-storage-blob>=12.24.0",
-
     # Data science core
     "pandas>=2.2.3",
     "numpy>=2.1.3",
     "pyarrow>=18.1.0",
-
     # HTTP/Network
     "requests>=2.32.3",
     "httpx>=0.28.0",
-
     # Utilities
     "python-dateutil>=2.9.0",
     "python-dotenv>=1.0.1",
     "pyyaml>=6.0.2",
     "cryptography>=44.0.0",
     "tqdm>=4.67.1",
-
     # Auth
     "msal>=1.31.0",
     "msal-extensions>=1.1.0",
     "pyjwt>=2.10.1",
+    "nhp-aci",
 ]
 
 
@@ -119,3 +116,6 @@ markers = [
     "integration: mark a test as an integration test.",
     "skip: skip a test",
 ]
+
+[tool.uv.sources]
+nhp-aci = { git = "https://github.com/the-strategy-unit/nhp_aci.git" }

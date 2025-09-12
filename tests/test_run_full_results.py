@@ -101,7 +101,24 @@ def test_environment_check():
     """Check if environment is properly configured."""
     logger.info("🧪 Testing environment configuration...")
 
-    required_vars = ["AZ_STORAGE_EP", "AZ_STORAGE_RESULTS", "API_KEY", "API_URL"]
+    required_vars = [
+        "AZ_STORAGE_EP",
+        "AZ_STORAGE_RESULTS",
+        "STORAGE_ACCOUNT",
+        "SUBSCRIPTION_ID",
+        "CONTAINER_IMAGE",
+        "AZURE_LOCATION",
+        "SUBNET_NAME",
+        "SUBNET_ID",
+        "USER_ASSIGNED_IDENTITY",
+        "CONTAINER_MEMORY",
+        "CONTAINER_CPU",
+        "AUTO_DELETE_COMPLETED_CONTAINERS",
+        "RESOURCE_GROUP",
+        "LOG_ANALYTICS_WORKSPACE_ID",
+        "LOG_ANALYTICS_WORKSPACE_KEY",
+        "LOG_ANALYTICS_WORKSPACE_RESOURCE_ID",
+    ]
     missing = [var for var in required_vars if not os.getenv(var)]
 
     if missing:
