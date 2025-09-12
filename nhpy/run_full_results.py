@@ -92,7 +92,7 @@ def _extract_scenario_components(results_path: str) -> tuple[str, str, str, str]
 
 
 # %%
-def _prepare_full_results_params(params: dict[str, str]) -> dict[str, str]:
+def _prepare_full_results_params(params: dict[str, object]) -> dict[str, object]:
     """
     Modify parameters for a full results run.
 
@@ -118,7 +118,7 @@ def _prepare_full_results_params(params: dict[str, str]) -> dict[str, str]:
 
 # %%
 def _submit_api_request(
-    params: dict[str, str],
+    params: dict[str, object],
     api_url: str,
     api_key: str,
     timeout: int = 30,
@@ -164,10 +164,12 @@ def _submit_api_request(
         server_datetime = response_data["create_datetime"]
         response_data["create_datetime"] = response_data["original_datetime"]
         logger.info(
-            dedent(f"""
+            dedent(
+                f"""
             ✅ API request successful 🥳
             {Colours.GREEN}Server datetime: {server_datetime}{Colours.RESET}
-            Original datetime: {response_data["original_datetime"]}""").strip()
+            Original datetime: {response_data["original_datetime"]}"""
+            ).strip()
         )
 
         return server_datetime
@@ -223,25 +225,32 @@ def run_scenario_with_full_results(
         logger.error(f"run_scenario_with_full_results():Invalid results path: {e}")
         raise
 
-    # Load scenario parameters
-    params = _load_scenario_params(
-        results_path=results_path, account_url=account_url, container_name=container_name
-    )
+    if account_url and container_name:
+        # Load scenario parameters
+        params = _load_scenario_params(
+            results_path=results_path,
+            account_url=account_url,
+            container_name=container_name,
+        )
 
-    # Prepare parameters for full results run
-    mod_params = _prepare_full_results_params(params=params)
+        # Prepare parameters for full results run
+        mod_params = _prepare_full_results_params(params=params)
 
-    # Submit API request
-    server_datetime = _submit_api_request(
-        params=mod_params, api_url=api_url, api_key=api_key, timeout=Constants.TIMEOUT_SEC
-    )
+        # Submit API request
+        if api_url and api_key:
+            server_datetime = _submit_api_request(
+                params=mod_params,
+                api_url=api_url,
+                api_key=api_key,
+                timeout=Constants.TIMEOUT_SEC,
+            )
 
-    mod_params["create_datetime"] = server_datetime
+        mod_params["create_datetime"] = server_datetime
 
-    # Construct and return result paths
-    full_results_params = _construct_results_path(params=mod_params)
+        # Construct and return result paths
+        full_results_params = _construct_results_path(params=mod_params)
 
-    return full_results_params
+        return full_results_params
 
 
 # %%

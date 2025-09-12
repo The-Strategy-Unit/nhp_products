@@ -1,5 +1,7 @@
 """Functions to process results files"""
 
+from typing import Callable
+
 import numpy as np
 import pandas as pd
 
@@ -229,7 +231,9 @@ def compare_stepcounts(results_dict: dict, trust: str) -> pd.DataFrame:
     return combined
 
 
-def create_time_profiles(horizon_years: int, year: int) -> dict[str, callable]:
+def create_time_profiles(
+    horizon_years: int, year: int
+) -> dict[str, float | Callable[[int], float]]:
     """Create time profile functions. Creates time_profiles_dict which is taken by
     the get_time_profiles_factor function
 
@@ -240,12 +244,12 @@ def create_time_profiles(horizon_years: int, year: int) -> dict[str, callable]:
     :rtype: dict[str, callable]
     """
     return {
-        "none": 1,
+        "none": 1.0,
         "linear": year / horizon_years,
         "front_loaded": np.sqrt(horizon_years**2 - (horizon_years - year) ** 2)
         / horizon_years,
         "back_loaded": 1 - np.sqrt(horizon_years**2 - year**2) / horizon_years,
-        "step": lambda y: int(year >= y),
+        "step": lambda y: float(year >= y),
     }
 
 

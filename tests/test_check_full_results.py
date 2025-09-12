@@ -181,7 +181,7 @@ def test_public_api():
 
     # Verify check_full_results is in __all__
     try:
-        from nhpy.check_full_results import __all__
+        from nhpy.check_full_results import __all__  # noqa PLC0415
 
         if "check_full_results" in __all__:
             logger.info("  ✅ check_full_results properly exported")
@@ -191,7 +191,7 @@ def test_public_api():
         logger.info("  ⚠️  No __all__ defined in module")
 
     # Verify function signature
-    import inspect
+    import inspect  # noqa PLC0415
 
     sig = inspect.signature(check_full_results)
     params = list(sig.parameters.keys())
@@ -218,7 +218,7 @@ def main():
 
         logger.info("\n🎉 All smoke tests passed!")
         logger.info(
-            "💡 To test with real Azure Storage, use a valid scenario path with proper credentials"
+            "💡 To test with real Azure Storage, use a valid scenario path with proper credentials"  # noqa E501
         )
 
     except Exception as e:
