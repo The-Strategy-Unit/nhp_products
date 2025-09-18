@@ -19,15 +19,19 @@ import os
 import time
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
-from azure.storage.blob import ContainerClient
 from dotenv import load_dotenv
 from tqdm import tqdm
 
 from nhpy import az, process_data, process_results
 
-load_dotenv()
+# Try to load from ~/.config/<project_name>/.env first, fall back to default behaviour
+project_name = os.path.basename(os.path.dirname(os.path.abspath(__name__)))
+config_env_path = os.path.expanduser(f"~/.config/{project_name}/.env")
+if os.path.exists(config_env_path):
+    load_dotenv(config_env_path)
+else:
+    load_dotenv()
+
 
 # %% [markdown]
 # Aggregated model results path
@@ -36,7 +40,7 @@ load_dotenv()
 # PRODUCT_run-scenario-with-full-results notebook copy the new_json_path variable that
 # gets output at the end and use that for the results_path variable here
 # %%
-agg_results_folder = "aggregated-model-results/vX.X/RXX/scenarioname/datetime/"
+agg_results_folder = os.environ["AZ_VALID_PATH"]
 
 # %% [markdown]
 # Setup

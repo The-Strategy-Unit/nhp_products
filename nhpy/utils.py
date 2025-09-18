@@ -13,7 +13,6 @@ This module provides utilities for:
 # Imports
 import logging
 import re
-from logging import Logger
 from os import getenv
 from pathlib import Path
 from typing import cast
@@ -52,7 +51,7 @@ def get_logger(module=None):
 
 
 # %%
-def configure_logging(level=logging.INFO):
+def configure_logging(level: int = logging.INFO):
     """Configure logging with appropriate formatting."""
     # Configure root logger - affects all loggers
     root_logger = logging.getLogger()
@@ -124,7 +123,7 @@ def _validate_environment_variables(required_vars: list[str]) -> EnvironmentConf
     if missing_vars:
         error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
         logger.error(error_msg)
-        raise EnvironmentVariableError(error_msg)
+        raise EnvironmentVariableError(message=error_msg, missing_vars=missing_vars)
 
     return cast(EnvironmentConfig, env_vars)
 
