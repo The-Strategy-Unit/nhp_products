@@ -60,6 +60,7 @@ def configure_logging(level: int = logging.INFO):
     logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(
         logging.WARNING
     )
+    logging.getLogger("azure.identity").setLevel(logging.WARNING)
 
     # Clear existing handlers
     for handler in root_logger.handlers[:]:
@@ -160,7 +161,7 @@ def _load_environment_variables() -> EnvironmentConfig:
 
 
 # %%
-def _construct_results_path(params: dict[str, str]) -> ScenarioPaths:
+def _construct_results_path(params: dict[str, object]) -> ScenarioPaths:
     """
     Construct paths for the new scenario results.
 
@@ -193,14 +194,14 @@ def _construct_results_path(params: dict[str, str]) -> ScenarioPaths:
         json_path=json_path,
         aggregated_results_path=aggregated_results_path,
         full_results_path=full_results_path,
-        original_datetime=params["original_datetime"],
+        original_datetime=str(params["original_datetime"]),
     )
 
 
 # %%
 def _load_scenario_params(
     results_path: str, account_url: str, container_name: str
-) -> dict[str, str]:
+) -> dict[str, object]:
     """
     Load parameters from an existing scenario using load_agg_params.
 

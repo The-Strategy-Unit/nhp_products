@@ -2,7 +2,8 @@
 
 
 def upgrade_ndg(params: dict) -> dict:
-    """Upgrades pre-v3.3 parameters with the old format for non-demographic growth so they can be used with model v3.3 onwards
+    """Upgrades pre-v3.3 parameters with the old format for non-demographic growth
+    so they can be used with model v3.3 onwards
 
     Args:
         params (dict): Full model parameters in JSON format

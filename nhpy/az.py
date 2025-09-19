@@ -362,8 +362,6 @@ def load_data_file_old(
 
 
 # %%
-
-
 def load_model_run_results_file(
     container_client: ContainerClient,
     params: ModelRunParams,

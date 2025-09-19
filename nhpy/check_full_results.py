@@ -140,11 +140,12 @@ def check_full_results(
     account_url = account_url or account_url_from_az
     container_name = container_name or container_name_from_az
 
-    params = _load_scenario_params(
-        results_path=scenario_path,
-        account_url=account_url,
-        container_name=container_name,
-    )
+    if account_url and container_name:
+        params = _load_scenario_params(
+            results_path=scenario_path,
+            account_url=account_url,
+            container_name=container_name,
+        )
 
     try:
         results_path_dict = _construct_results_path(params=params)
@@ -188,7 +189,7 @@ def check_full_results(
 
 
 # %%
-def main(level: Logger = INFO) -> int:
+def main(level: int = INFO) -> int:
     """
     CLI entry point when module is run directly.
 
