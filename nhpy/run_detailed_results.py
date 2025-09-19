@@ -1,28 +1,69 @@
 """
-This module is for producing detailed results for model v4.0.0.
+Generate detailed results for a model scenario.
 
-Assumes you have already authenticated via Azure CLI -
-[instructions here](https://github.com/The-Strategy-Unit/data_science/blob/fa37cbc01513127626364049124d71f06a35183a/blogs/posts/2024-05-22_storing-data-safely/azure_python.ipynb#L43-L47).
-Outputs into a `data/` folder the detailed aggregations of IP, OP, and AAE model
-results in CSV and Parquet formats.
+This module produces detailed aggregations of IP, OP, and AAE model results
+in CSV and Parquet formats. It assumes the scenario has already been run with
+`full_model_results = True`. Outputs are stored in a `data/` folder.
 
-Also assumes the scenario has already been run with `full_model_results = True`.
+Usage:
+    # Programmatic usage
+    from nhpy.run_detailed_results import run_detailed_results
+    run_detailed_results("aggregated-model-results/v4.0/RXX/test/20250101_100000/")
 
-You can check if this has happened using `nhpy.check_full_results`, and if not,
-produce full model results using `nhpy.run_full_results`
+    # CLI usage
+    uv run python nhpy/run_detailed_results.py \
+        aggregated-model-results/v4.0/RXX/test/20250101_100000/
+
+Prerequisites:
+    - Authentication via Azure CLI is required
+    - Scenario must have full_model_results enabled
+    - You can check using `nhpy.check_full_results`
+    - You can enable full results using `nhpy.run_full_results`
+
+Configuration:
+    Set environment variables: AZ_STORAGE_EP, AZ_STORAGE_RESULTS, AZ_STORAGE_DATA
+
+Exit codes:
+    0: Success
+    2: Error occurred (authentication, network, etc.)
+    130: Operation cancelled (Ctrl+C)
 """
 
 # %%
 # Imports
 
+import argparse
 import os
+import sys
 import time
+from logging import INFO
 from pathlib import Path
 
+from azure.core.exceptions import (
+    ClientAuthenticationError,
+    HttpResponseError,
+    ResourceNotFoundError,
+    ServiceRequestError,
+)
 from dotenv import load_dotenv
 from tqdm import tqdm
 
 from nhpy import az, process_data, process_results
+from nhpy.config import ExitCodes
+from nhpy.types import ProcessContext
+from nhpy.utils import (
+    EnvironmentVariableError,
+    configure_logging,
+    get_logger,
+)
+
+# %%
+# Define public API
+__all__ = ["run_detailed_results"]
+
+# %%
+# Get a logger for this module
+logger = get_logger()
 
 # Try to load from ~/.config/<project_name>/.env first, fall back to default behaviour
 project_name = os.path.basename(os.path.dirname(os.path.abspath(__name__)))
@@ -33,419 +74,615 @@ else:
     load_dotenv()
 
 
-# %% [markdown]
-# Aggregated model results path
-# ⚠️ Set this to the path where the aggregated model results are saved
-# NOTE: This should already have full_model_results available! If not, please run the
-# PRODUCT_run-scenario-with-full-results notebook copy the new_json_path variable that
-# gets output at the end and use that for the results_path variable here
-# %%
-agg_results_folder = os.environ["AZ_VALID_PATH"]
+def _initialize_connections_and_params(
+    results_path: str,
+    account_url: str,
+    results_container: str,
+    data_container: str,
+) -> ProcessContext:
+    """
+    Initialize connections and load parameters from the aggregated results.
 
-# %% [markdown]
-# Setup
+    Args:
+        results_path: Path to the aggregated model results
+        account_url: Azure Storage account URL
+        results_container: Azure Storage container for results
+        data_container: Azure Storage container for data
 
-# %%
-# Load env vars
-account_url = os.getenv("AZ_STORAGE_EP", "")
-results_container = os.getenv("AZ_STORAGE_RESULTS", "")
-data_container = os.getenv("AZ_STORAGE_DATA", "")
-api_key = os.getenv("API_KEY", "")
+    Returns:
+        dict containing all necessary objects and parameters for processing
 
-# %%
-# Connections and params
-results_connection = az.connect_to_container(account_url, results_container)
-data_connection = az.connect_to_container(account_url, data_container)
-params = az.load_agg_params(results_connection, agg_results_folder)
+    Raises:
+        FileNotFoundError: If results folder or data version not found
+    """
+    # Connections and params
+    results_connection = az.connect_to_container(account_url, results_container)
+    data_connection = az.connect_to_container(account_url, data_container)
+    params = az.load_agg_params(results_connection, results_path)
 
-# %%
-# Get lots of info from the results file
-scenario_name = params["scenario"]
-trust = params["dataset"]
-model_version = params["app_version"]
-baseline_year = params["start_year"]
-run_id = params["create_datetime"]
+    # Get info from the results file
+    scenario_name = params["scenario"]
+    trust = params["dataset"]
+    model_version = params["app_version"]
+    baseline_year = int(params["start_year"])
+    run_id = params["create_datetime"]
 
-# %%
-# Patch model version for loading the data. Results folder name truncated,
-# e.g. v3.0 does not show the patch version. But data stores in format v3.0.1
-model_version_data = az.find_latest_version(data_connection, params["app_version"])
-print(f"Using data: {model_version_data}")
-if model_version_data == "N/A":
-    raise FileNotFoundError("Results folder not found")
+    # Patch model version for loading the data. Results folder name truncated,
+    # e.g. v3.0 does not show the patch version. But data stores in format v3.0.1
+    model_version_data = az.find_latest_version(data_connection, params["app_version"])
+    logger.info(f"Using data: {model_version_data}")
+    if model_version_data == "N/A":
+        raise FileNotFoundError("Results folder not found")
 
-# %%
-# Add `data/` folder if it doesn't exist
-Path("notebooks/PRODUCT_detailed_results/data/").mkdir(parents=True, exist_ok=True)
+    # Add principal to the "vanilla" model results
+    actual_results_df = az.load_agg_results(results_connection, results_path)
+    actual_results_df = process_results.convert_results_format(actual_results_df)
 
-# %%
-# Add principal to the "vanilla" model results
-actual_results_df = az.load_agg_results(results_connection, agg_results_folder)
-actual_results_df = process_results.convert_results_format(actual_results_df)
+    return {
+        "results_connection": results_connection,
+        "data_connection": data_connection,
+        "params": params,
+        "scenario_name": scenario_name,
+        "trust": trust,
+        "model_version": model_version,
+        "model_version_data": model_version_data,
+        "baseline_year": baseline_year,
+        "run_id": run_id,
+        "actual_results_df": actual_results_df,
+    }
 
-# %% [markdown]
-# ## Inpatients
 
-# %%
-# Load original data
-original_df = az.load_data_file(
-    data_connection, model_version_data, trust, "ip", baseline_year
-)
+def _process_inpatient_results(
+    ctx: ProcessContext,
+    output_dir: str,
+) -> None:
+    """
+    Process inpatient detailed results.
 
-# %%
-# Load all model runs, using batching
-# In [1]: %%timeit
-# 7min 21s ± 1min 22s per loop (mean ± std. dev. of 7 runs, 1 loop each)
-# Pre-allocate dictionary
-model_runs = {}
+    Args:
+        ctx: dictionary with connections and parameters
+        output_dir: Directory to save output files
+    """
+    # Extract needed variables from ctx
+    results_connection = ctx["results_connection"]
+    data_connection = ctx["data_connection"]
+    model_version = ctx["model_version"]
+    model_version_data = ctx["model_version_data"]
+    trust = ctx["trust"]
+    baseline_year = ctx["baseline_year"]
+    scenario_name = ctx["scenario_name"]
+    run_id = ctx["run_id"]
+    actual_results_df = ctx["actual_results_df"]
 
-# Pre-create the reference dataframe copy once
-reference_df = original_df.copy().drop(columns=["speldur", "classpat"])
-
-# Choose an appropriate batch size for your file sizes and memory constraints
-batch_size = 20
-
-# Process all runs
-start = time.perf_counter()
-for run in tqdm(range(1, 257), desc="IP"):
-    # Load with batch functionality - this will cache surrounding runs
-    df = az.load_model_run_results_file(
-        container_client=results_connection,
-        version=model_version,
+    # Load original data
+    original_df = az.load_data_file(
+        container_client=data_connection,
+        version=model_version_data,
         dataset=trust,
-        scenario_name=scenario_name,
-        run_id=run_id,
         activity_type="ip",
-        run_number=run,
-        batch_size=batch_size,  # This enables batch loading
+        year=baseline_year,
     )
 
-    # Use the pre-created reference dataframe
-    merged = reference_df.merge(df, on="rn", how="inner")
-    results = process_data.process_ip_detailed_results(merged)
+    # Pre-allocate dictionary
+    model_runs = {}
 
-    # More efficient dictionary update
-    results_dict = results.to_dict()
-    for k, v in results_dict["value"].items():
-        if k not in model_runs:  # Avoid unnecessary .keys() call
-            model_runs[k] = []
-        model_runs[k].append(v)
-end = time.perf_counter()
-print(f"All IP model runs were processed in {end - start:.3f} sec")
+    # Pre-create the reference dataframe copy once
+    reference_df = original_df.copy().drop(columns=["speldur", "classpat"])
 
-# %%
-# Process model runs dictionary after the loop completes
-model_runs_df = process_data.process_model_runs_dict(
-    model_runs,
-    columns=[
-        "sitetret",
-        "age_group",
-        "sex",
-        "pod",
-        "tretspef",
-        "los_group",
-        "maternity_delivery_in_spell",
-        "measure",
-    ],
-)
+    # Choose an appropriate batch size for your file sizes and memory constraints
+    batch_size = 20
 
-# %%
-# Useful for checking if "main" model results from Azure line up with aggregated model
-# results. Not always the same because of rounding
+    # Process all runs
+    start = time.perf_counter()
+    for run in tqdm(range(1, 257), desc="IP"):
+        # Load with batch functionality - this will cache surrounding runs
+        df = az.load_model_run_results_file(
+            container_client=results_connection,
+            params={
+                "version": model_version,
+                "dataset": trust,
+                "scenario_name": scenario_name,
+                "run_id": run_id,
+                "activity_type": "ip",
+                "run_number": run,
+                "batch_size": batch_size,  # This enables batch loading
+            },
+        )
 
-default_beddays_principal = (
-    actual_results_df[actual_results_df["measure"] == "beddays"]["mean"].sum().astype(int)
-)
-detailed_beddays_principal = (
-    model_runs_df.loc[
-        (
-            slice(None),
-            slice(None),
-            slice(None),
-            slice(None),
-            slice(None),
-            slice(None),
-            slice(None),
-            "beddays",
-        ),
-        :,
-    ]
-    .sum()
-    .loc["mean"]
-    .astype(int)
-)
+        # Use the pre-created reference dataframe
+        merged = reference_df.merge(df, on="rn", how="inner")
+        results = process_data.process_ip_detailed_results(merged)
 
-try:
-    assert abs(default_beddays_principal - detailed_beddays_principal) <= 1
-except AssertionError:
-    print(default_beddays_principal)
-    print(detailed_beddays_principal)
+        # More efficient dictionary update
+        results_dict = results.to_dict()
+        for k, v in results_dict["value"].items():
+            if k not in model_runs:  # Avoid unnecessary .keys() call
+                model_runs[k] = []
+            model_runs[k].append(v)
+    end = time.perf_counter()
+    logger.info(f"All IP model runs were processed in {end - start:.3f} sec")
 
-# %%
-# Save
-
-model_runs_df.to_csv(
-    f"notebooks/PRODUCT_detailed_results/data/{scenario_name}_detailed_ip_results.csv"
-)
-model_runs_df.to_parquet(
-    f"notebooks/PRODUCT_detailed_results/data/{scenario_name}_detailed_ip_results.parquet"
-)
-
-# %% [markdown]
-# ## Outpatients
-
-# %%
-original_df = az.load_data_file(
-    data_connection, model_version_data, trust, "op", baseline_year
-).fillna("unknown")
-original_df = original_df.rename(columns={"index": "rn"})
-
-
-# %%
-# In [2]: %% timeit
-# 2min 3s ± 7.05 s per loop (mean ± std. dev. of 7 runs, 1 loop each)
-# Pre-allocate dictionary
-op_model_runs = {}
-
-# Pre-create the reference dataframe copy once
-reference_df = original_df.copy().drop(columns=["attendances", "tele_attendances"])
-
-# Choose an appropriate batch size for your file sizes and memory constraints
-# A batch size of 20 means we'll load 20 files at a time
-batch_size = 20
-
-# Process all runs
-start = time.perf_counter()
-for run in tqdm(range(1, 257), desc="OP"):
-    # Load with batch functionality - this will cache surrounding runs
-    df = az.load_model_run_results_file(
-        container_client=results_connection,
-        version=model_version,
-        dataset=trust,
-        scenario_name=scenario_name,
-        run_id=run_id,
-        activity_type="op",
-        run_number=run,
-        batch_size=batch_size,  # This enables batch loading
+    # Process model runs dictionary after the loop completes
+    model_runs_df = process_data.process_model_runs_dict(
+        model_runs,
+        columns=[
+            "sitetret",
+            "age_group",
+            "sex",
+            "pod",
+            "tretspef",
+            "los_group",
+            "maternity_delivery_in_spell",
+            "measure",
+        ],
     )
 
-    assert df.shape[0] == original_df.shape[0]
-
-    # Use the pre-created reference dataframe
-    merged = reference_df.merge(df, on="rn", how="inner")
-    results = process_data.process_op_detailed_results(merged)
-
-    # Load conversion data with batch functionality
-    df_conv = az.load_model_run_results_file(
-        container_client=results_connection,
-        version=model_version,
-        dataset=trust,
-        scenario_name=scenario_name,
-        run_id=run_id,
-        activity_type="op_conversion",
-        run_number=run,
-        batch_size=batch_size,  # This enables batch loading
+    # Validate results
+    default_beddays_principal = (
+        actual_results_df[actual_results_df["measure"] == "beddays"]["mean"]
+        .sum()
+        .astype(int)
+    )
+    detailed_beddays_principal = (
+        model_runs_df.loc[
+            (
+                slice(None),
+                slice(None),
+                slice(None),
+                slice(None),
+                slice(None),
+                slice(None),
+                slice(None),
+                "beddays",
+            ),
+            :,
+        ]
+        .sum()
+        .loc["mean"]
+        .astype(int)
     )
 
-    df_conv = process_data.process_op_converted_from_ip(df_conv)
-    results = process_data.combine_converted_with_main_results(df_conv, results)
+    try:
+        assert abs(default_beddays_principal - detailed_beddays_principal) <= 1
+    except AssertionError:
+        logger.warning(
+            f"""Validation mismatch: default={default_beddays_principal},
+            detailed={detailed_beddays_principal}"""
+        )
 
-    # More efficient dictionary update
-    results_dict = results.to_dict()
-    for k, v in results_dict["value"].items():
-        if k not in op_model_runs:  # Avoid unnecessary .keys() call
-            op_model_runs[k] = []
-        op_model_runs[k].append(v)
-end = time.perf_counter()
-print(f"All OP model runs were processed in {end - start:.3f} sec")
+    # Save results
+    model_runs_df.to_csv(f"{output_dir}/{scenario_name}_detailed_ip_results.csv")
+    model_runs_df.to_parquet(f"{output_dir}/{scenario_name}_detailed_ip_results.parquet")
 
-# %%
-op_model_runs_df = process_data.process_model_runs_dict(
-    op_model_runs, columns=["sitetret", "pod", "age_group", "tretspef", "measure"]
-)
-op_model_runs_df.head()
 
-# %%
-# Useful for checking if "main" model results from Azure line up with aggregated model
-# results using "full model results"
-detailed_attendances_principal = (
-    op_model_runs_df.round(1)
-    .loc[(slice(None), slice(None), slice(None), slice(None), "attendances"), :]
-    .sum()
-    .astype(int)
-    .loc["mean"]
-)
-default_attendances_principal = (
-    actual_results_df[actual_results_df["measure"] == "attendances"]["mean"]
-    .sum()
-    .astype(int)
-)
-# They're not always exactly the same because of rounding
-try:
-    assert abs(default_attendances_principal - detailed_attendances_principal) <= 1
-except AssertionError:
-    print(default_attendances_principal)
-    print(detailed_attendances_principal)
+def _process_outpatient_results(
+    context: ProcessContext,
+    output_dir: str,
+) -> None:
+    """
+    Process outpatient detailed results.
 
-# %%
-op_model_runs_df.to_csv(
-    f"notebooks/PRODUCT_detailed_results/data/{scenario_name}_detailed_op_results.csv"
-)
-op_model_runs_df.to_parquet(
-    f"notebooks/PRODUCT_detailed_results/data/{scenario_name}_detailed_op_results.parquet"
-)
+    Args:
+        context: dictionary with connections and parameters
+        output_dir: Directory to save output files
+    """
+    # Extract needed variables from context
+    results_connection = context["results_connection"]
+    data_connection = context["data_connection"]
+    model_version = context["model_version"]
+    model_version_data = context["model_version_data"]
+    trust = context["trust"]
+    baseline_year = context["baseline_year"]
+    scenario_name = context["scenario_name"]
+    run_id = context["run_id"]
+    actual_results_df = context["actual_results_df"]
 
-# %% [markdown]
-# ## AAE
+    # Load original data
+    original_df = az.load_data_file(
+        data_connection, model_version_data, trust, "op", baseline_year
+    ).fillna("unknown")
+    original_df = original_df.rename(columns={"index": "rn"})
 
-# %%
-original_df = az.load_data_file(
-    data_connection, model_version_data, trust, "aae", baseline_year
-).fillna("unknown")
-original_df = original_df.rename(columns={"index": "rn"})
+    # Pre-allocate dictionary
+    op_model_runs = {}
 
-# %%
-# In [3]: %%timeit
-# 25.3 s ± 2.49 s per loop (mean ± std. dev. of 7 runs, 1 loop each)
-# Pre-allocate dictionary
-ae_model_runs = {}
+    # Pre-create the reference dataframe copy once
+    reference_df = original_df.copy().drop(columns=["attendances", "tele_attendances"])
 
-# Pre-create the reference dataframe copy once
-reference_df = original_df.drop(columns=["arrivals"])
+    # Choose an appropriate batch size for your file sizes and memory constraints
+    batch_size = 20
 
-# Choose an appropriate batch size for your file sizes and memory constraints
-# A batch size of 20 means we'll load 20 files at a time
-batch_size = 20
+    # Process all runs
+    start = time.perf_counter()
+    for run in tqdm(range(1, 257), desc="OP"):
+        # Load with batch functionality - this will cache surrounding runs
+        df = az.load_model_run_results_file(
+            container_client=results_connection,
+            params={
+                "version": model_version,
+                "dataset": trust,
+                "scenario_name": scenario_name,
+                "run_id": run_id,
+                "activity_type": "op",
+                "run_number": run,
+                "batch_size": batch_size,  # This enables batch loading
+            },
+        )
 
-# Process all runs
-start = time.perf_counter()
-for run in tqdm(range(1, 257), desc="A&E"):
-    # Load with batch functionality - this will cache surrounding runs
-    df = az.load_model_run_results_file(
-        container_client=results_connection,
-        version=model_version,
-        dataset=trust,
-        scenario_name=scenario_name,
-        run_id=run_id,
-        activity_type="aae",
-        run_number=run,
-        batch_size=batch_size,  # This enables batch loading
+        assert df.shape[0] == original_df.shape[0]
+
+        # Use the pre-created reference dataframe
+        merged = reference_df.merge(df, on="rn", how="inner")
+        results = process_data.process_op_detailed_results(merged)
+
+        # Load conversion data with batch functionality
+        df_conv = az.load_model_run_results_file(
+            container_client=results_connection,
+            params={
+                "version": model_version,
+                "dataset": trust,
+                "scenario_name": scenario_name,
+                "run_id": run_id,
+                "activity_type": "op_conversion",
+                "run_number": run,
+                "batch_size": batch_size,  # This enables batch loading
+            },
+        )
+
+        df_conv = process_data.process_op_converted_from_ip(df_conv)
+        results = process_data.combine_converted_with_main_results(df_conv, results)
+
+        # More efficient dictionary update
+        results_dict = results.to_dict()
+        for k, v in results_dict["value"].items():
+            if k not in op_model_runs:  # Avoid unnecessary .keys() call
+                op_model_runs[k] = []
+            op_model_runs[k].append(v)
+    end = time.perf_counter()
+    logger.info(f"All OP model runs were processed in {end - start:.3f} sec")
+
+    # Process results
+    op_model_runs_df = process_data.process_model_runs_dict(
+        op_model_runs, columns=["sitetret", "pod", "age_group", "tretspef", "measure"]
     )
 
-    assert len(df) == len(original_df)
-
-    # Use the pre-created reference dataframe
-    merged = reference_df.merge(df, on="rn", how="inner")
-    results = process_data.process_aae_results(merged)
-
-    # Load conversion data with batch functionality
-    df_conv = az.load_model_run_results_file(
-        container_client=results_connection,
-        version=model_version,
-        dataset=trust,
-        scenario_name=scenario_name,
-        run_id=run_id,
-        activity_type="sdec_conversion",
-        run_number=run,
-        batch_size=batch_size,  # This enables batch loading
+    # Validate results
+    detailed_attendances_principal = (
+        op_model_runs_df.round(1)
+        .loc[(slice(None), slice(None), slice(None), slice(None), "attendances"), :]
+        .sum()
+        .astype(int)
+        .loc["mean"]
+    )
+    default_attendances_principal = (
+        actual_results_df[actual_results_df["measure"] == "attendances"]["mean"]
+        .sum()
+        .astype(int)
     )
 
-    df_conv = process_data.process_aae_converted_from_ip(df_conv)
-    results = process_data.combine_converted_with_main_results(df_conv, results)
+    # They're not always exactly the same because of rounding
+    try:
+        assert abs(default_attendances_principal - detailed_attendances_principal) <= 1
+    except AssertionError:
+        logger.warning(
+            f"""Validation mismatch: default={default_attendances_principal},
+            detailed={detailed_attendances_principal}"""
+        )
 
-    # More efficient dictionary update
-    results_dict = results.to_dict()
-    for k, v in results_dict["arrivals"].items():
-        if k not in ae_model_runs:  # Avoid unnecessary .keys() call
-            ae_model_runs[k] = []
-        ae_model_runs[k].append(v)
-end = time.perf_counter()
-print(f"All AAE model runs were processed in {end - start:.3f} sec")
-
-# %%
-ae_model_runs_df = process_data.process_model_runs_dict(
-    ae_model_runs,
-    columns=[
-        "sitetret",
-        "pod",
-        "age_group",
-        "attendance_category",
-        "aedepttype",
-        "acuity",
-        "measure",
-    ],
-)
+    # Save results
+    op_model_runs_df.to_csv(f"{output_dir}/{scenario_name}_detailed_op_results.csv")
+    op_model_runs_df.to_parquet(
+        f"{output_dir}/{scenario_name}_detailed_op_results.parquet"
+    )
 
 
-# %%
-# Useful for checking if "main" model results from Azure line up with
-# aggregated model results using full model results
-detailed_ambulance_principal = (
-    ae_model_runs_df.loc[
-        (
-            slice(None),
-            slice(None),
-            slice(None),
-            slice(None),
-            slice(None),
-            slice(None),
-            "ambulance",
-        ),
-        :,
-    ]
-    .sum()
-    .loc["mean"]
-    .round(0)
-)
-default_ambulance_principal = (
-    actual_results_df[actual_results_df["measure"] == "ambulance"]["mean"].sum().round(0)
-)
+def _process_aae_results(
+    context: ProcessContext,
+    output_dir: str,
+) -> None:
+    """
+    Process A&E detailed results.
 
-# They're not always exactly the same because of rounding
-try:
-    assert abs(default_ambulance_principal - detailed_ambulance_principal) <= 1
-except AssertionError:
-    print("OH NO!!")
-    print(default_ambulance_principal)
-    print(detailed_ambulance_principal)
+    Args:
+        context: dictionary with connections and parameters
+        output_dir: Directory to save output files
+    """
+    # Extract needed variables from context
+    results_connection = context["results_connection"]
+    data_connection = context["data_connection"]
+    model_version = context["model_version"]
+    model_version_data = context["model_version_data"]
+    trust = context["trust"]
+    baseline_year = context["baseline_year"]
+    scenario_name = context["scenario_name"]
+    run_id = context["run_id"]
+    actual_results_df = context["actual_results_df"]
 
-# %%
-# Useful for checking if "main" model results from Azure line up with
-# aggregated model results using full model results
-detailed_walkins_principal = (
-    ae_model_runs_df.loc[
-        (
-            slice(None),
-            slice(None),
-            slice(None),
-            slice(None),
-            slice(None),
-            slice(None),
-            "walk-in",
-        ),
-        :,
-    ]
-    .sum()
-    .loc["mean"]
-    .round(0)
-)
-default_walkins_principal = (
-    actual_results_df[actual_results_df["measure"] == "walk-in"]["mean"].sum().round(0)
-)
+    # Load original data
+    original_df = az.load_data_file(
+        data_connection, model_version_data, trust, "aae", baseline_year
+    ).fillna("unknown")
+    original_df = original_df.rename(columns={"index": "rn"})
 
-# They're not always exactly the same because of rounding
-try:
-    assert abs(default_walkins_principal - detailed_walkins_principal) <= 1
-except AssertionError:
-    print("OH NO!!")
-    print(default_walkins_principal)
-    print(detailed_walkins_principal)
+    # Pre-allocate dictionary
+    ae_model_runs = {}
 
-# %%
-# Save
-ae_model_runs_df.to_csv(
-    f"notebooks/PRODUCT_detailed_results/data/{scenario_name}_detailed_ae_results.csv"
-)
-ae_model_runs_df.to_parquet(
-    f"notebooks/PRODUCT_detailed_results/data/{scenario_name}_detailed_ae_results.parquet"
-)
+    # Pre-create the reference dataframe copy once
+    reference_df = original_df.drop(columns=["arrivals"])
+
+    # Choose an appropriate batch size for your file sizes and memory constraints
+    batch_size = 20
+
+    # Process all runs
+    start = time.perf_counter()
+    for run in tqdm(range(1, 257), desc="A&E"):
+        # Load with batch functionality - this will cache surrounding runs
+        df = az.load_model_run_results_file(
+            container_client=results_connection,
+            params={
+                "version": model_version,
+                "dataset": trust,
+                "scenario_name": scenario_name,
+                "run_id": run_id,
+                "activity_type": "aae",
+                "run_number": run,
+                "batch_size": batch_size,  # This enables batch loading
+            },
+        )
+
+        assert len(df) == len(original_df)
+
+        # Use the pre-created reference dataframe
+        merged = reference_df.merge(df, on="rn", how="inner")
+        results = process_data.process_aae_results(merged)
+
+        # Load conversion data with batch functionality
+        df_conv = az.load_model_run_results_file(
+            container_client=results_connection,
+            params={
+                "version": model_version,
+                "dataset": trust,
+                "scenario_name": scenario_name,
+                "run_id": run_id,
+                "activity_type": "sdec_conversion",
+                "run_number": run,
+                "batch_size": batch_size,  # This enables batch loading
+            },
+        )
+
+        df_conv = process_data.process_aae_converted_from_ip(df_conv)
+        results = process_data.combine_converted_with_main_results(df_conv, results)
+
+        # More efficient dictionary update
+        results_dict = results.to_dict()
+        for k, v in results_dict["arrivals"].items():
+            if k not in ae_model_runs:  # Avoid unnecessary .keys() call
+                ae_model_runs[k] = []
+            ae_model_runs[k].append(v)
+    end = time.perf_counter()
+    logger.info(f"All AAE model runs were processed in {end - start:.3f} sec")
+
+    # Process results
+    ae_model_runs_df = process_data.process_model_runs_dict(
+        ae_model_runs,
+        columns=[
+            "sitetret",
+            "pod",
+            "age_group",
+            "attendance_category",
+            "aedepttype",
+            "acuity",
+            "measure",
+        ],
+    )
+
+    # Validate ambulance results
+    detailed_ambulance_principal = (
+        ae_model_runs_df.loc[
+            (
+                slice(None),
+                slice(None),
+                slice(None),
+                slice(None),
+                slice(None),
+                slice(None),
+                "ambulance",
+            ),
+            :,
+        ]
+        .sum()
+        .loc["mean"]
+        .round(0)
+    )
+    default_ambulance_principal = (
+        actual_results_df[actual_results_df["measure"] == "ambulance"]["mean"]
+        .sum()
+        .round(0)
+    )
+
+    # They're not always exactly the same because of rounding
+    try:
+        assert abs(default_ambulance_principal - detailed_ambulance_principal) <= 1
+    except AssertionError:
+        logger.warning(
+            f"""Ambulance validation mismatch: default={default_ambulance_principal},
+            detailed={detailed_ambulance_principal}"""
+        )
+
+    # Validate walk-in results
+    detailed_walkins_principal = (
+        ae_model_runs_df.loc[
+            (
+                slice(None),
+                slice(None),
+                slice(None),
+                slice(None),
+                slice(None),
+                slice(None),
+                "walk-in",
+            ),
+            :,
+        ]
+        .sum()
+        .loc["mean"]
+        .round(0)
+    )
+    default_walkins_principal = (
+        actual_results_df[actual_results_df["measure"] == "walk-in"]["mean"]
+        .sum()
+        .round(0)
+    )
+
+    # They're not always exactly the same because of rounding
+    try:
+        assert abs(default_walkins_principal - detailed_walkins_principal) <= 1
+    except AssertionError:
+        logger.warning(
+            f"""Walk-in validation mismatch: default={default_walkins_principal},
+            detailed={detailed_walkins_principal}"""
+        )
+
+    # Save results
+    ae_model_runs_df.to_csv(f"{output_dir}/{scenario_name}_detailed_ae_results.csv")
+    ae_model_runs_df.to_parquet(
+        f"{output_dir}/{scenario_name}_detailed_ae_results.parquet"
+    )
+
+
+def run_detailed_results(
+    results_path: str,
+    output_dir: str | None = None,
+    account_url: str | None = None,
+    results_container: str | None = None,
+    data_container: str | None = None,
+) -> dict[str, str]:
+    """
+    Generate detailed results for a model scenario.
+
+    Takes an existing scenario results path and produces detailed aggregations
+    of IP, OP, and AAE model results in CSV and Parquet formats.
+
+    Args:
+        results_path: Path to existing aggregated results
+        output_dir: Directory to save output files (default: 'nhpy/data')
+        account_url: Azure Storage account URL (default: from environment)
+        results_container: Azure Storage container for results (default: from environment)
+        data_container: Azure Storage container for data (default: from environment)
+
+    Returns:
+        dict[str, str]: dictionary containing paths to output files
+
+    Raises:
+        EnvironmentVariableError: If required environment variables are missing
+        ValueError: If path format is invalid
+        FileNotFoundError: If results folder or data version not found
+        Various Azure exceptions: For authentication, network, or permission issues
+    """
+    # Load environment variables if not provided
+    account_url = account_url or os.getenv("AZ_STORAGE_EP", "")
+    results_container = results_container or os.getenv("AZ_STORAGE_RESULTS", "")
+    data_container = data_container or os.getenv("AZ_STORAGE_DATA", "")
+
+    if not all([account_url, results_container, data_container]):
+        missing = []
+        if not account_url:
+            missing.append("AZ_STORAGE_EP")
+        if not results_container:
+            missing.append("AZ_STORAGE_RESULTS")
+        if not data_container:
+            missing.append("AZ_STORAGE_DATA")
+        raise EnvironmentVariableError(
+            missing_vars=missing,
+            message=f"Missing environment variables: {', '.join(missing)}",
+        )
+
+    # Set up output directory
+    if output_dir is None:
+        output_dir = "nhpy/data"
+
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    # Initialize connections and load parameters
+    context = _initialize_connections_and_params(
+        results_path, account_url, results_container, data_container
+    )
+
+    # Process each type of results
+    _process_inpatient_results(context, output_dir)
+    _process_outpatient_results(context, output_dir)
+    _process_aae_results(context, output_dir)
+
+    scenario_name = context["scenario_name"]
+
+    # Return paths to output files
+    return {
+        "ip_csv": f"{output_dir}/{scenario_name}_detailed_ip_results.csv",
+        "ip_parquet": f"{output_dir}/{scenario_name}_detailed_ip_results.parquet",
+        "op_csv": f"{output_dir}/{scenario_name}_detailed_op_results.csv",
+        "op_parquet": f"{output_dir}/{scenario_name}_detailed_op_results.parquet",
+        "ae_csv": f"{output_dir}/{scenario_name}_detailed_ae_results.csv",
+        "ae_parquet": f"{output_dir}/{scenario_name}_detailed_ae_results.parquet",
+    }
+
+
+def main() -> int:
+    """
+    CLI entry point when module is run directly.
+
+    Returns:
+        int: Exit code (0 for success, 2 for errors)
+    """
+    configure_logging(INFO)
+
+    parser = argparse.ArgumentParser(
+        description="Generate detailed results for a model scenario"
+    )
+    parser.add_argument(
+        "results_path",
+        help="Path to existing aggregated results \
+        (e.g. 'aggregated-model-results/v4.0/RXX/test/20250101_100000/')",
+    )
+    parser.add_argument(
+        "--output-dir",
+        help="Directory to save output files (default: 'nhpy/data')",
+        default="nhpy/data",
+    )
+    parser.add_argument("--account-url", help="Azure Storage account URL")
+    parser.add_argument("--results-container", help="Azure Storage container for results")
+    parser.add_argument("--data-container", help="Azure Storage container for data")
+
+    args = parser.parse_args()
+
+    try:
+        run_detailed_results(
+            results_path=args.results_path,
+            output_dir=args.output_dir,
+            account_url=args.account_url,
+            results_container=args.results_container,
+            data_container=args.data_container,
+        )
+
+        logger.info("🎉 Detailed results generated successfully!")
+        logger.info(f"Results saved to: {args.output_dir}/")
+
+        return ExitCodes.SUCCESS_CODE
+
+    except (
+        ValueError,
+        EnvironmentVariableError,
+        ClientAuthenticationError,
+        ResourceNotFoundError,
+        HttpResponseError,
+        ServiceRequestError,
+        FileNotFoundError,
+    ) as e:
+        logger.error(f"main():Error: {e}")
+        return ExitCodes.EXCEPTION_CODE
+    except KeyboardInterrupt:
+        logger.info("Operation cancelled by user")
+        return ExitCodes.SIGINT_CODE
+
+
+# Main guardrail
+if __name__ == "__main__":
+    sys.exit(main())
