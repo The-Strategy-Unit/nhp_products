@@ -24,6 +24,7 @@ from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobPrefix, ContainerClient
 
 from nhpy.config import EmptyContainerError
+from nhpy.types import ModelRunParams
 
 # %% cache
 _model_results_cache: dict[str, dict[int, pd.DataFrame]] = {}
@@ -283,7 +284,7 @@ def load_data_file(
     version: str,
     dataset: str,
     activity_type: str,
-    year: int = 2019,
+    year: int = 2023,
 ) -> pd.DataFrame:
     """Loads Parquet file from Azure containing NHP model data. Only works for >= v3.0.0
 
@@ -292,7 +293,7 @@ def load_data_file(
         version: Version of the dataset to be used
         dataset: Name of the trust/dataset
         activity_type: Type of activity - options include ip, op, aae.
-        year: Year for the data. Defaults to 2019.
+        year: Year for the data. Defaults to 2023.
 
     Returns:
         pd.DataFrame: DataFrame of the data
@@ -361,17 +362,9 @@ def load_data_file_old(
 
 
 # %%
-# TODO: at a later stage, we could package input args into a dict
-# to respect PLR0913 https://docs.astral.sh/ruff/rules/too-many-arguments/
-def load_model_run_results_file(  # noqa PLR0913
+def load_model_run_results_file(
     container_client: ContainerClient,
-    version: str,
-    dataset: str,
-    scenario_name: str,
-    run_id: str,
-    activity_type: str,
-    run_number: int,
-    batch_size: int | None = None,
+    params: ModelRunParams,
 ) -> pd.DataFrame:
     """Loads full model results from a specific run from Azure.
     Requires for the run to have had "--save-full-model-results" enabled.
@@ -379,13 +372,15 @@ def load_model_run_results_file(  # noqa PLR0913
 
     Args:
         container_client: Connection to container with data files
-        version: Version of the dataset to be used
-        dataset: Name of the trust/dataset
-        scenario_name: Name of the scenario
-        run_id: ID of the specific model run of that scenario
-        activity_type: Type of activity - options include ip, op, aae.
-        run_number: Which of the Monte Carlo simulation runs it is
-        batch_size: If provided, loads files in batches of this size (internal caching)
+        params: Dictionary containing parameters:
+            - version: Version of the dataset to be used
+            - dataset: Name of the trust/dataset
+            - scenario_name: Name of the scenario
+            - run_id: ID of the specific model run of that scenario
+            - activity_type: Type of activity - options include ip, op, aae.
+            - run_number: Which of the Monte Carlo simulation runs it is
+            - batch_size: If provided, loads files in batches of this size (internal
+            caching)
 
     Returns:
         pd.DataFrame: DataFrame of the data for the requested run_number
@@ -395,6 +390,15 @@ def load_model_run_results_file(  # noqa PLR0913
         ValueError: If the requested file is not a valid parquet file
         AzureError: If there's an issue downloading the requested file
     """
+
+    # Extract parameters
+    version = params["version"]
+    dataset = params["dataset"]
+    scenario_name = params["scenario_name"]
+    run_id = params["run_id"]
+    activity_type = params["activity_type"]
+    run_number = params["run_number"]
+    batch_size = params.get("batch_size")
 
     path_components = [
         "full-model-results",
@@ -427,9 +431,9 @@ def load_model_run_results_file(  # noqa PLR0913
         _model_results_cache[cache_key] = {}
 
     # Calculate batch range (centered on requested run_number if possible)
-    half_batch = batch_size // 2
+    half_batch = batch_size // 2 if batch_size is not None else 0
     batch_start = max(1, run_number - half_batch)
-    batch_end = batch_start + batch_size
+    batch_end = batch_start + (batch_size if batch_size is not None else 1)
 
     # Track if we need to separately load the requested run
     requested_run_loaded = False
@@ -474,7 +478,9 @@ def load_model_run_results_file(  # noqa PLR0913
 
 
 # %%
-def load_agg_params(container_client: ContainerClient, path_to_agg_files: str) -> dict:
+def load_agg_params(
+    container_client: ContainerClient, path_to_agg_files: str
+) -> dict[str, str]:
     """Loads params from the folder containing the aggregated results files,
     introduced in v3.1
 

@@ -10,6 +10,9 @@ used throughout the application.
 # Imports
 from typing import TypedDict
 
+from azure.storage.blob import ContainerClient
+from pandas import DataFrame
+
 
 # %%
 # Custom types
@@ -30,3 +33,30 @@ class EnvironmentConfig(TypedDict):
     AZ_STORAGE_DATA: str
     API_KEY: str
     API_URL: str
+
+
+class ProcessContext(TypedDict):
+    """Context for detailed results processing."""
+
+    results_connection: ContainerClient
+    data_connection: ContainerClient
+    params: dict[str, str]
+    scenario_name: str
+    trust: str
+    model_version: str
+    model_version_data: str
+    baseline_year: int
+    run_id: str
+    actual_results_df: DataFrame
+
+
+class ModelRunParams(TypedDict):
+    """Parameters for loading model run results."""
+
+    version: str
+    dataset: str
+    scenario_name: str
+    run_id: str
+    activity_type: str
+    run_number: int
+    batch_size: int | None
