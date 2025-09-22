@@ -29,6 +29,7 @@ Exit codes:
 # %%
 import argparse
 import json
+import os
 import sys
 import time
 from logging import INFO
@@ -43,9 +44,6 @@ from azure.core.exceptions import (
 )
 from azure.identity import CredentialUnavailableError
 from jsonschema import ValidationError
-from nhp.aci.run_model import create_model_run
-from nhp.aci.run_model.helpers import validate_params
-from nhp.aci.status.model_run_status import get_model_run_status
 
 from nhpy.config import Colours, Constants, ExitCodes
 from nhpy.types import ScenarioPaths
@@ -112,7 +110,7 @@ def _prepare_full_results_params(params: dict[str, object]) -> dict[str, object]
     # Modify parameters for the new run
     new_params["scenario"] = params["scenario"]
     new_params["user"] = "ds-team"
-    new_params["viewable"] = "False"
+    new_params["viewable"] = False
     new_params["original_datetime"] = params["original_datetime"]
 
     logger.debug(f"Prepared parameters for new scenario: {new_params['scenario']}")
@@ -131,6 +129,7 @@ def _validate_params(params: dict[str, object]) -> None:
         ValidationError: For schema validation errors
 
     """
+    from nhp.aci.run_model.helpers import validate_params  # # noqa: PLC0415
 
     version = str(params["app_version"])
     logger.info(f"Validating params against schema {version}...")
@@ -154,6 +153,8 @@ def _start_container(params: dict[str, object]) -> dict[str, str]:
     Returns:
         dict[str, str]: Metadata for container
     """
+    from nhp.aci.run_model import create_model_run  # noqa # # noqa: PLC0415
+
     logger.info("Starting container for full model results run...")
     try:
         metadata = create_model_run(
@@ -168,7 +169,7 @@ def _start_container(params: dict[str, object]) -> dict[str, str]:
             ).strip()
         )
         return metadata
-      
+
     except CredentialUnavailableError as e:
         logger.error(f"_start_container(): Unable to start container: {e}")
         raise
@@ -182,6 +183,8 @@ def _track_container_status(metadata: dict[str, str]):
         metadata (dict[str, str]): Metadata for submitted model run
 
     """
+    from nhp.aci.status.model_run_status import get_model_run_status  # # noqa: PLC0415
+
     logger.info(
         f"Checking container status every 120 seconds... ⌚",
     )
@@ -254,8 +257,6 @@ def run_scenario_with_full_results(
     missing_params = [
         param_name
         for param_name, param_value in {
-            "api_url": api_url,
-            "api_key": api_key,
             "account_url": account_url,
             "container_name": container_name,
         }.items()
@@ -283,24 +284,26 @@ def run_scenario_with_full_results(
         container_name=container_name if container_name is not None else "",
     )
 
-        # Prepare parameters for full results run
-        mod_params = _prepare_full_results_params(params=params)
+    # Prepare parameters for full results run
+    mod_params = _prepare_full_results_params(params=params)
 
-    # Submit API request
-    # At this point api_url and api_key are guaranteed to be non-None
-    # due to the checks above, but we need to help the type checker
-    server_datetime = _submit_api_request(
-        params=mod_params,
-        api_url=api_url if api_url is not None else "",
-        api_key=api_key if api_key is not None else "",
-        timeout=Constants.TIMEOUT_SEC,
+    # Validate parameters against schema
+    _validate_params(mod_params)
+
+    container_metadata = _start_container(mod_params)
+
+    # Track container status
+    _track_container_status(container_metadata)
+
+    # Use container creation datetime
+    mod_params["create_datetime"] = (
+        container_metadata["create_datetime"] if container_metadata else ""
     )
 
-    mod_params["create_datetime"] = server_datetime if server_datetime else ""
+    # Construct and return result paths
+    full_results_params = _construct_results_path(params=mod_params)
 
-        # Construct and return result paths
-        full_results_params = _construct_results_path(params=mod_params)
-        return full_results_params
+    return full_results_params
 
 
 # %%
