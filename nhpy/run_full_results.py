@@ -143,6 +143,7 @@ def _validate_params(params: dict[str, object]) -> None:
 
 
 # %%
+# TODO: dict[str, object] is somewhat meaningless. Make this a TypedDict perhaps?
 def _start_container(params: dict[str, object]) -> dict[str, str]:
     """Starts Azure container using submitted parameters, with save_full_model_results
     set to True
