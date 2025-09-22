@@ -28,8 +28,6 @@ Exit codes:
 
 # %%
 import argparse
-import json
-import os
 import sys
 import time
 from logging import INFO
@@ -44,6 +42,9 @@ from azure.core.exceptions import (
 )
 from azure.identity import CredentialUnavailableError
 from jsonschema import ValidationError
+from nhp.aci.run_model import create_model_run
+from nhp.aci.run_model.helpers import validate_params
+from nhp.aci.status.model_run_status import get_model_run_status
 
 from nhpy.config import Colours, Constants, ExitCodes
 from nhpy.types import ScenarioPaths
@@ -129,7 +130,6 @@ def _validate_params(params: dict[str, object]) -> None:
         ValidationError: For schema validation errors
 
     """
-    from nhp.aci.run_model.helpers import validate_params  # # noqa: PLC0415
 
     version = str(params["app_version"])
     logger.info(f"Validating params against schema {version}...")
@@ -154,7 +154,6 @@ def _start_container(params: dict[str, object]) -> dict[str, str]:
     Returns:
         dict[str, str]: Metadata for container
     """
-    from nhp.aci.run_model import create_model_run  # noqa # # noqa: PLC0415
 
     logger.info("Starting container for full model results run...")
     try:
@@ -184,7 +183,6 @@ def _track_container_status(metadata: dict[str, str]):
         metadata (dict[str, str]): Metadata for submitted model run
 
     """
-    from nhp.aci.status.model_run_status import get_model_run_status  # # noqa: PLC0415
 
     logger.info(
         f"Checking container status every 120 seconds... ⌚",
