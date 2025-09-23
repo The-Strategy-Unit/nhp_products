@@ -1127,8 +1127,8 @@ wheels = [
 
 [[package]]
 name = "nhp-aci"
-version = "0.1.dev11+ge0d1ea1cb"
-source = { git = "https://github.com/the-strategy-unit/nhp_aci.git#e0d1ea1cbaefac6e41fda8d946942c0f56242b34" }
+version = "0.1.dev25+gc34fd5d81"
+source = { git = "https://github.com/the-strategy-unit/nhp_aci.git#c34fd5d81d8de368615e2f11a6baf2a6714119e1" }
 dependencies = [
     { name = "azure-identity" },
     { name = "azure-mgmt-containerinstance" },
