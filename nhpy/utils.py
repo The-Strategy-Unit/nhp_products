@@ -13,7 +13,6 @@ This module provides utilities for:
 # Imports
 import logging
 import re
-from logging import Logger
 from os import getenv
 from pathlib import Path
 from typing import cast
@@ -52,7 +51,7 @@ def get_logger(module=None):
 
 
 # %%
-def configure_logging(level=logging.INFO):
+def configure_logging(level: int = logging.INFO):
     """Configure logging with appropriate formatting."""
     # Configure root logger - affects all loggers
     root_logger = logging.getLogger()
@@ -95,19 +94,35 @@ logger = get_logger()
 # %%
 def _load_dotenv_file() -> None:
     """Load .env file with proper error handling."""
-    if not Path(".env").exists():
-        error_msg = "No .env file found"
-        logger.error(error_msg)
-        raise FileNotFoundError(error_msg)
+    # Get repository name from current directory
+    repo_name = Path.cwd().name
 
-    try:
-        load_dotenv()
-    except PermissionError as e:
-        logger.error(f"Permission denied when loading .env file: {e}")
-        raise
-    except IOError as e:
-        logger.error(f"IO error when loading .env file: {e}")
-        raise
+    # Check ~/.config/repo_name/.env first
+    config_path = Path.home() / ".config" / repo_name / ".env"
+    if config_path.exists():
+        try:
+            load_dotenv(dotenv_path=config_path)
+            return
+        except (PermissionError, IOError) as e:
+            logger.error(f"Error loading {config_path}: {e}")
+            # Continue to try local .env
+
+    # Fall back to local .env
+    local_path = Path(".env")
+    if local_path.exists():
+        try:
+            load_dotenv()
+            return
+        except PermissionError as e:
+            logger.error(f"Permission denied when loading .env file: {e}")
+            raise
+        except IOError as e:
+            logger.error(f"IO error when loading .env file: {e}")
+            raise
+
+    error_msg = f"No .env file found in {config_path} or {local_path}"
+    logger.error(error_msg)
+    raise FileNotFoundError(error_msg)
 
 
 def _validate_environment_variables(required_vars: list[str]) -> EnvironmentConfig:
@@ -125,7 +140,7 @@ def _validate_environment_variables(required_vars: list[str]) -> EnvironmentConf
     if missing_vars:
         error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
         logger.error(error_msg)
-        raise EnvironmentVariableError([error_msg])
+        raise EnvironmentVariableError(message=error_msg, missing_vars=missing_vars)
 
     return cast(EnvironmentConfig, env_vars)
 

@@ -28,10 +28,8 @@ Exit codes:
 
 # %%
 import argparse
-import os
 import sys
 from logging import DEBUG, INFO, Logger
-from pathlib import Path
 
 from azure.core.exceptions import (
     ClientAuthenticationError,
@@ -39,10 +37,9 @@ from azure.core.exceptions import (
     ResourceNotFoundError,
     ServiceRequestError,
 )
-from azure.storage.blob import ContainerClient
 from dotenv import load_dotenv
 
-from nhpy.az import connect_to_container, get_azure_blobs, get_azure_credentials
+from nhpy.az import get_azure_blobs, get_azure_credentials
 from nhpy.config import EmptyContainerError, ExitCodes
 from nhpy.utils import (
     _construct_results_path,

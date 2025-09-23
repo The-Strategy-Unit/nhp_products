@@ -31,7 +31,6 @@ import argparse
 import sys
 import time
 from logging import INFO
-from pathlib import Path
 from textwrap import dedent
 
 import requests
@@ -121,8 +120,6 @@ def _prepare_full_results_params(params: dict[str, object]) -> dict[str, object]
 
 
 # %%
-
-
 def _validate_params(params: dict[str, object]) -> None:
     """Validates params against published schema for a specific model version
 
@@ -146,8 +143,7 @@ def _validate_params(params: dict[str, object]) -> None:
 
 
 # %%
-
-
+# TODO: dict[str, object] is somewhat meaningless. Make this a TypedDict perhaps?
 def _start_container(params: dict[str, object]) -> dict[str, str]:
     """Starts Azure container using submitted parameters, with save_full_model_results
     set to True
@@ -158,6 +154,7 @@ def _start_container(params: dict[str, object]) -> dict[str, str]:
     Returns:
         dict[str, str]: Metadata for container
     """
+
     logger.info("Starting container for full model results run...")
     try:
         metadata = create_model_run(
@@ -172,14 +169,13 @@ def _start_container(params: dict[str, object]) -> dict[str, str]:
             ).strip()
         )
         return metadata
+
     except CredentialUnavailableError as e:
         logger.error(f"_start_container(): Unable to start container: {e}")
         raise
 
 
 # %%
-
-
 def _track_container_status(metadata: dict[str, str]):
     """Checks container status every 120 seconds to check on model run progress
 
@@ -187,6 +183,7 @@ def _track_container_status(metadata: dict[str, str]):
         metadata (dict[str, str]): Metadata for submitted model run
 
     """
+
     logger.info(
         f"Checking container status every 120 seconds... ⌚",
     )
@@ -255,6 +252,21 @@ def run_scenario_with_full_results(
         account_url = account_url or env_config["AZ_STORAGE_EP"]
         container_name = container_name or env_config["AZ_STORAGE_RESULTS"]
 
+    # Check that all required parameters are now set. If not, raise an error.
+    missing_params = [
+        param_name
+        for param_name, param_value in {
+            "account_url": account_url,
+            "container_name": container_name,
+        }.items()
+        if not param_value
+    ]
+    if missing_params:
+        raise EnvironmentVariableError(
+            missing_vars=missing_params,
+            message=f"Missing required parameters: {', '.join(missing_params)}",
+        )
+
     # Validate the results path format
     try:
         _extract_scenario_components(results_path=results_path)
@@ -262,30 +274,35 @@ def run_scenario_with_full_results(
         logger.error(f"run_scenario_with_full_results():Invalid results path: {e}")
         raise
 
-    if account_url and container_name:
-        # Load scenario parameters
-        params = _load_scenario_params(
-            results_path=results_path,
-            account_url=account_url,
-            container_name=container_name,
-        )
+    # Load scenario parameters
+    # At this point account_url and container_name are guaranteed to be non-None
+    # due to the checks above, but we need to help the type checker
+    params = _load_scenario_params(
+        results_path=results_path,
+        account_url=account_url if account_url is not None else "",
+        container_name=container_name if container_name is not None else "",
+    )
 
-        # Prepare parameters for full results run
-        mod_params = _prepare_full_results_params(params=params)
+    # Prepare parameters for full results run
+    mod_params = _prepare_full_results_params(params=params)
 
-        # Validate parameters against schema
-        _validate_params(mod_params)
+    # Validate parameters against schema
+    _validate_params(mod_params)
 
-        container_metadata = _start_container(mod_params)
+    container_metadata = _start_container(mod_params)
 
-        # Track container status
-        _track_container_status(container_metadata)
+    # Track container status
+    _track_container_status(container_metadata)
 
-        mod_params["create_datetime"] = container_metadata["create_datetime"]
+    # Use container creation datetime
+    mod_params["create_datetime"] = (
+        container_metadata["create_datetime"] if container_metadata else ""
+    )
 
-        # Construct and return result paths
-        full_results_params = _construct_results_path(params=mod_params)
-        return full_results_params
+    # Construct and return result paths
+    full_results_params = _construct_results_path(params=mod_params)
+
+    return full_results_params
 
 
 # %%
