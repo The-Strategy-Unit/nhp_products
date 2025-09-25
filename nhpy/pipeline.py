@@ -408,7 +408,7 @@ def main() -> int:
                 )
 
                 # Update scenario path to the new results
-                scenario_path_for_detailed = result_paths["full_results_path"]
+                scenario_path_for_detailed = result_paths["aggregated_results_path"]
                 logger.info(f"{SUCCESS_COLOR}Full model results generated at:{RESET}")
                 logger.info(f"  {scenario_path_for_detailed}")
 
