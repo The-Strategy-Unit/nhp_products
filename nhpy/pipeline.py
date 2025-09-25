@@ -15,7 +15,7 @@ Usage:
 
     # With custom output directory
     uv run python nhpy/pipeline.py \
-        aggregated-model-results/v4.x/RXX/test/20250101_100000/ --output-dir ./results
+        aggregated-model-results/v4.x/RXX/test/20250101_100000/ -o ./results
 
 Configuration:
     Set environment variables in .env file:
