@@ -18,7 +18,6 @@ Usage:
 
 Configuration:
     Set environment variables based on your .env
-    Or provide API credentials via function arguments.
 
 Exit codes:
     0: Success
