@@ -1,4 +1,4 @@
-# Modal data QA checks
+# Model data QA checks
 
 This notebook automates the process of comparing the `dev` data for the NHP model
 with the data from the latest two versions. It draws the relevant data for the NHP schemes from Azure, aggregates it, and collates it in one dataframe.
