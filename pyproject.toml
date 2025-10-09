@@ -13,6 +13,8 @@ dependencies = [
     "azure-identity>=1.17.1",
     "azure-storage-blob>=12.24.0",
     # Data science core
+    # "polars==1.34.0", # The following required CPU features were not detected: avx, avx2, fma Continuing to use this version of Polars on this processor will likely result in a crash.
+    "polars-lts-cpu>=1.33.1",
     "pandas>=2.2.3",
     "numpy>=2.1.3",
     "pyarrow>=18.1.0",
