@@ -12,38 +12,40 @@ Pandas-specific functions to use Polars instead.
 
 # Imports
 import io
+import logging
+import time
 
 import polars as pl
 from azure.core.exceptions import (
     AzureError,
     ResourceNotFoundError,
+    ServiceRequestError,
+    ServiceResponseError,
 )
 from azure.storage.blob import ContainerClient
 
-# Import non-Pandas functions from az.py
-from nhpy.az import (
-    connect_to_container,
-    find_latest_version,
-    get_azure_blobs,
-    get_azure_credentials,
-    load_agg_params,
-    load_results_gzip_file,
-    load_results_json_file,
-)
 from nhpy.types import ModelRunParams
+
+# Configure module logger
+logger = logging.getLogger(__name__)
 
 # cache for Polars DataFrames
 _model_results_cache: dict[str, dict[int, pl.DataFrame]] = {}
 
 
 def load_parquet_file(
-    container_client: ContainerClient, path_to_file: str
+    container_client: ContainerClient,
+    path_to_file: str,
+    max_retries: int = 3,
+    timeout: int = 120,
 ) -> pl.DataFrame:
     """Loads parquet file from Azure
 
     Args:
         container_client: Connection to the container
         path_to_file: Path to the file to be loaded
+        max_retries: Maximum number of retry attempts (default: 3)
+        timeout: Timeout in seconds for the download operation (default: 120)
 
     Returns:
         pl.DataFrame: DataFrame of the data
@@ -51,24 +53,62 @@ def load_parquet_file(
     Raises:
         ResourceNotFoundError: If the file doesn't exist
         ValueError: If the file is not a valid parquet file
-        AzureError: If there's an issue downloading the file
+        AzureError: If there's an issue downloading the file after all retries
     """
-    try:
-        blob_client = container_client.get_blob_client(path_to_file)
-        download_stream = blob_client.download_blob()
-        stream_object = io.BytesIO(download_stream.readall())
-        # Use Polars to read the parquet file directly
-        data = pl.read_parquet(stream_object)
+    retry_count = 0
+    last_exception = None
 
-        return data
-    except ResourceNotFoundError:
-        raise
-    except ValueError as e:
-        if "parquet" in str(e).lower():
-            raise ValueError(f"Invalid parquet file: {e}") from e
-        raise
-    except AzureError:
-        raise
+    while retry_count < max_retries:
+        try:
+            blob_client = container_client.get_blob_client(path_to_file)
+            # Set timeout for the download operation
+            download_stream = blob_client.download_blob(timeout=timeout)
+            stream_object = io.BytesIO(download_stream.readall())
+            # Use Polars to read the parquet file directly
+            data = pl.read_parquet(stream_object)
+
+            return data
+        except ResourceNotFoundError:
+            # Don't retry for files that don't exist
+            raise
+        except ValueError as e:
+            # Don't retry for invalid parquet files
+            if "parquet" in str(e).lower():
+                raise ValueError(f"Invalid parquet file: {e}") from e
+            raise
+        except (ServiceResponseError, ServiceRequestError, TimeoutError, AzureError) as e:
+            last_exception = e
+            retry_count += 1
+            if retry_count < max_retries:
+                # Exponential backoff: wait longer with each retry
+                wait_time = 2**retry_count
+                logger.warning(
+                    "Download attempt %d/%d failed for %s: %s. Retrying in %d seconds...",
+                    retry_count,
+                    max_retries,
+                    path_to_file,
+                    str(e),
+                    wait_time,
+                )
+                time.sleep(wait_time)
+            else:
+                logger.error(
+                    "Failed to download %s after %d attempts: %s",
+                    path_to_file,
+                    max_retries,
+                    str(e),
+                )
+
+    # If we've exhausted all retries, raise the last exception
+    if last_exception:
+        raise AzureError(
+            f"Failed to download blob after {max_retries} attempts: {str(last_exception)}"
+        ) from last_exception
+
+    # This should never happen, but just in case
+    raise AzureError(
+        f"Failed to download or process {path_to_file} with an unknown error"
+    )
 
 
 def load_data_file(

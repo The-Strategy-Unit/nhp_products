@@ -5,6 +5,7 @@ This module reuses non-Pandas functions from process_data.py and reimplements on
 Pandas-specific functions to use Polars instead.
 """
 
+import logging
 from collections import defaultdict
 
 import numpy as np
@@ -12,6 +13,8 @@ import polars as pl
 
 from nhpy.config import Constants
 from nhpy.process_data import n_runs
+
+logger = logging.getLogger(__name__)
 
 
 def age_groups(age: pl.Expr | pl.Series) -> pl.Expr:
@@ -166,10 +169,10 @@ def process_ip_activity_avoided(data: pl.DataFrame) -> pl.DataFrame:
         ]
     )
 
-    # Melt to long format
-    data = data.melt(
-        id_vars=["sushrg", "los_group", "pod"],
-        value_vars=["admissions", "beddays", "procedures"],
+    # Convert to long format using unpivot
+    data = data.unpivot(
+        index=["sushrg", "los_group", "pod"],
+        on=["admissions", "beddays", "procedures"],
         variable_name="measure",
     )
 
@@ -316,10 +319,10 @@ def process_ip_detailed_results(data: pl.DataFrame) -> pl.DataFrame:
         ]
     )
 
-    # Melt to long format
-    data = data.melt(
-        id_vars=group_cols,
-        value_vars=["admissions", "beddays", "procedures"],
+    # Convert to long format using unpivot
+    data = data.unpivot(
+        index=group_cols,
+        on=["admissions", "beddays", "procedures"],
         variable_name="measure",
     )
 
@@ -353,10 +356,10 @@ def process_op_detailed_results(data: pl.DataFrame) -> pl.DataFrame:
     Returns:
         The processed and aggregated data
     """
-    # Melt to convert wide format to long format
-    measures = data.melt(
-        id_vars=["rn"],
-        value_vars=["attendances", "tele_attendances"],
+    # Convert wide format to long format using unpivot
+    measures = data.unpivot(
+        index=["rn"],
+        on=["attendances", "tele_attendances"],
         variable_name="measure",
     )
 
@@ -399,7 +402,7 @@ def process_op_converted_from_ip(data: pl.DataFrame) -> pl.DataFrame:
     except Exception as e:
         # If there's an error with the age column, use a default value
         # to maintain the pipeline functionality
-        print(f"Warning: Error processing age column: {e}")
+        logger.warning("Error processing age column: %s", e)
         data = data.with_columns(pl.lit("Unknown").alias("age_group"))
 
     # Rename and group by required columns
@@ -507,7 +510,7 @@ def process_aae_converted_from_ip(data: pl.DataFrame) -> pl.DataFrame:
         data = data.with_columns(age_groups(pl.col("age")).alias("age_group"))
     except Exception as e:
         # If there's an error with the age column, use a default value
-        print(f"Warning: Error processing age column in AAE: {e}")
+        logger.warning("Error processing age column in AAE: %s", e)
         data = data.with_columns(pl.lit("Unknown").alias("age_group"))
 
     # Rename group to measure and group by required columns
