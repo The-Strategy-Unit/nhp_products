@@ -1,5 +1,4 @@
-"""
-Generate detailed results for a model scenario - Polars implementation.
+"""Generate detailed results for a model scenario - Polars implementation.
 
 This module produces detailed aggregations of IP, OP, and AAE model results
 in CSV and Parquet formats using Polars for improved performance. It assumes the
@@ -55,12 +54,10 @@ from azure.storage.blob import ContainerClient
 from dotenv import load_dotenv
 from tqdm import tqdm
 
-from nhpy import az_pl, process_data_pl, process_results_pl
+from nhpy import az, az_pl, process_data_pl, process_results_pl
 from nhpy.config import ExitCodes
 
 # Import non-Pandas constants and functions from run_detailed_results.py
-from nhpy.run_detailed_results import __all__, main as original_main
-from nhpy.types import ProcessContext as PandasProcessContext
 from nhpy.utils import (
     EnvironmentVariableError,
     configure_logging,
@@ -84,17 +81,18 @@ class ProcessContext(TypedDict):
     actual_results_df: pl.DataFrame
 
 
-# Define public API - reuse from original module
+# Define public API
+# Override imported __all__ with our own version
 __all__ = ["run_detailed_results"]
 
 # Get a logger for this module
 logger = get_logger()
 
 # Try to load from ~/.config/<project_name>/.env first, fall back to default behaviour
-project_name = os.path.basename(os.path.dirname(os.path.abspath(__name__)))
-config_env_path = os.path.expanduser(f"~/.config/{project_name}/.env")
-if os.path.exists(config_env_path):
-    load_dotenv(config_env_path)
+project_name = Path(__name__).resolve().parent.name
+config_env_path = Path(f"~/.config/{project_name}/.env").expanduser()
+if config_env_path.exists():
+    load_dotenv(str(config_env_path))
 else:
     load_dotenv()
 
@@ -105,8 +103,7 @@ def _initialize_connections_and_params(
     results_container: str,
     data_container: str,
 ) -> ProcessContext:
-    """
-    Initialize connections and load parameters from the aggregated results.
+    """Initialize connections and load parameters from the aggregated results.
 
     Args:
         results_path: Path to the aggregated model results
@@ -119,11 +116,12 @@ def _initialize_connections_and_params(
 
     Raises:
         FileNotFoundError: If results folder or data version not found
+
     """
     # Connections and params
-    results_connection = az_pl.connect_to_container(account_url, results_container)
-    data_connection = az_pl.connect_to_container(account_url, data_container)
-    params = az_pl.load_agg_params(results_connection, results_path)
+    results_connection = az.connect_to_container(account_url, results_container)
+    data_connection = az.connect_to_container(account_url, data_container)
+    params = az.load_agg_params(results_connection, results_path)
 
     # Get info from the results file
     scenario_name = params["scenario"]
@@ -134,10 +132,11 @@ def _initialize_connections_and_params(
 
     # Patch model version for loading the data. Results folder name truncated,
     # e.g. v3.0 does not show the patch version. But data stores in format v3.0.1
-    model_version_data = az_pl.find_latest_version(data_connection, params["app_version"])
-    logger.info(f"Using data: {model_version_data}")
+    model_version_data = az.find_latest_version(data_connection, params["app_version"])
+    logger.info("Using data: %s", model_version_data)
     if model_version_data == "N/A":
-        raise FileNotFoundError("Results folder not found")
+        error_msg = "Results folder not found"
+        raise FileNotFoundError(error_msg)
 
     # Add principal to the "vanilla" model results
     actual_results_df = az_pl.load_agg_results(results_connection, results_path)
@@ -573,8 +572,7 @@ def run_detailed_results(
     results_container: str | None = None,
     data_container: str | None = None,
 ) -> dict[str, str]:
-    """
-    Generate detailed results for a model scenario using Polars.
+    """Generate detailed results for a model scenario using Polars.
 
     Takes an existing scenario results path and produces detailed aggregations
     of IP, OP, and AAE model results in CSV and Parquet formats.
@@ -617,11 +615,16 @@ def run_detailed_results(
     if output_dir is None:
         output_dir = "nhpy/data"
 
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    # Convert to Path object and create directory
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
 
     # Initialize connections and load parameters
     context = _initialize_connections_and_params(
-        results_path, account_url, results_container, data_container
+        results_path,
+        account_url,
+        results_container,
+        data_container,
     )
 
     # Process each type of results
@@ -643,8 +646,7 @@ def run_detailed_results(
 
 
 def main() -> int:
-    """
-    CLI entry point when module is run directly.
+    """CLI entry point when module is run directly.
 
     Returns:
         int: Exit code (0 for success, 2 for errors)
@@ -652,7 +654,7 @@ def main() -> int:
     configure_logging(INFO)
 
     parser = argparse.ArgumentParser(
-        description="Generate detailed results for a model scenario using Polars"
+        description="Generate detailed results for a model scenario using Polars",
     )
     parser.add_argument(
         "results_path",
@@ -680,10 +682,7 @@ def main() -> int:
         )
 
         logger.info("🎉 Detailed results generated successfully!")
-        logger.info(f"Results saved to: {args.output_dir}/")
-
-        return ExitCodes.SUCCESS_CODE
-
+        logger.info("Results saved to: %s/", args.output_dir)
     except (
         ValueError,
         EnvironmentVariableError,
@@ -692,12 +691,16 @@ def main() -> int:
         HttpResponseError,
         ServiceRequestError,
         FileNotFoundError,
-    ) as e:
-        logger.error(f"main():Error: {e}")
+    ):
+        # Don't include the exception object, as it's already included by logger.exception
+        logger.exception("main():Error occurred")
         return ExitCodes.EXCEPTION_CODE
     except KeyboardInterrupt:
         logger.info("Operation cancelled by user")
         return ExitCodes.SIGINT_CODE
+    else:
+        # If we got here, it means no exceptions were raised
+        return ExitCodes.SUCCESS_CODE
 
 
 # Main guardrail
