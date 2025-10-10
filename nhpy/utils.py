@@ -35,9 +35,16 @@ def get_module_name():
     except (NameError, AttributeError):
         # We're in IPython/Jupyter
         try:
-            from IPython import get_ipython  # noqa
+            from IPython import (  # noqa:  PLC0415
+                get_ipython,  # pyright: ignore[reportPrivateImportUsage]
+            )
+            # noqa:  PLC0415
 
-            return get_ipython().user_ns.get("__name__", "notebook")
+            ipython = get_ipython()
+            if ipython is not None:
+                return ipython.user_ns.get("__name__", "notebook")
+            else:
+                return "interactive"
         except (ImportError, AttributeError):
             return "interactive"
 
@@ -53,6 +60,9 @@ def get_logger(module=None):
 # %%
 def configure_logging(level: int = logging.INFO):
     """Configure logging with appropriate formatting."""
+    # Import tqdm here to ensure it's available only when needed
+    from tqdm.auto import tqdm  # noqa
+
     # Configure root logger - affects all loggers
     root_logger = logging.getLogger()
 
@@ -66,7 +76,19 @@ def configure_logging(level: int = logging.INFO):
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    handler = logging.StreamHandler()
+    # Create a custom handler that works with tqdm
+    class TqdmLoggingHandler(logging.Handler):
+        def emit(self, record):
+            try:
+                msg = self.format(record)
+                # Write to tqdm.write() which works with progress bars
+                tqdm.write(msg)
+                self.flush()
+            except Exception:
+                self.handleError(record)
+
+    # Use the custom handler instead of StreamHandler
+    handler = TqdmLoggingHandler()
 
     if level <= logging.DEBUG:
         formatter = logging.Formatter(
@@ -217,7 +239,7 @@ def _construct_results_path(params: dict[str, object]) -> ScenarioPaths:
 # %%
 def _load_scenario_params(
     results_path: str, account_url: str, container_name: str
-) -> dict[str, object]:
+) -> dict[str, str]:
     """
     Load parameters from an existing scenario using load_agg_params.
 
@@ -235,8 +257,8 @@ def _load_scenario_params(
     if not results_path:
         raise ValueError("Results path cannot be empty")
 
-    if not isinstance(results_path, str):
-        raise ValueError(f"Path must be a string, got {type(results_path).__name__}")
+    if type(results_path) is not str:
+        raise TypeError(f"{results_path} must be of type str")
 
     logger.info("Loading scenario parameters...")
     logger.debug(f"Loading parameters from: {results_path}")

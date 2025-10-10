@@ -34,28 +34,28 @@ def age_groups(age: pl.Expr | pl.Series) -> pl.Expr:
     # Simple when-then chain directly on the series
     return (
         pl.when(filled_age <= Constants.AGE_UNKNOWN)
-        .then("Unknown")
+        .then(pl.lit("Unknown"))
         .when(filled_age <= Constants.AGE_INFANT)
-        .then("0")
+        .then(pl.lit("0"))
         .when(filled_age < Constants.AGE_TODDLER)
-        .then("1-4")
+        .then(pl.lit("1-4"))
         .when(filled_age < Constants.AGE_CHILD)
-        .then("5-9")
+        .then(pl.lit("5-9"))
         .when(filled_age < Constants.AGE_ADOLESCENT)
-        .then("10-15")
+        .then(pl.lit("10-15"))
         .when(filled_age < Constants.AGE_YOUNG_ADULT)
-        .then("16-17")
+        .then(pl.lit("16-17"))
         .when(filled_age < Constants.AGE_ADULT)
-        .then("18-34")
+        .then(pl.lit("18-34"))
         .when(filled_age < Constants.AGE_MIDDLE_AGE)
-        .then("35-49")
+        .then(pl.lit("35-49"))
         .when(filled_age < Constants.AGE_SENIOR)
-        .then("50-64")
+        .then(pl.lit("50-64"))
         .when(filled_age < Constants.AGE_ELDERLY)
-        .then("65-74")
+        .then(pl.lit("65-74"))
         .when(filled_age < Constants.AGE_OLDEST)
-        .then("75-84")
-        .otherwise("85+")
+        .then(pl.lit("75-84"))
+        .otherwise(pl.lit("85+"))
     )
 
 
@@ -388,31 +388,45 @@ def process_op_converted_from_ip(data: pl.DataFrame) -> pl.DataFrame:
     Returns:
         The processed and aggregated data
     """
-    # The original Pandas code assumes the 'age' column exists, so we do the same
-    # Set pod, age_group, and measure columns
+    # Start with a copy of the input data
+    data = data.clone()
+
+    # Always set pod and measure
     data = data.with_columns(
         [pl.lit("op_procedure").alias("pod"), pl.lit("attendances").alias("measure")]
     )
 
-    # Add age_group column - replicate exactly what the pandas version does
-    try:
-        data = data.with_columns(age_groups(pl.col("age")).alias("age_group"))
+    # Add age_group if it doesn't exist
+    if "age_group" not in data.columns:
+        # Default to "Unknown"
+        if "age" in data.columns:
+            # Try to create age groups if age column exists
+            try:
+                data = data.with_columns(age_groups(pl.col("age")).alias("age_group"))
+            except Exception as e:
+                logger.warning(f"Error processing age column: {e}")
+                data = data.with_columns(pl.lit("Unknown").alias("age_group"))
+        else:
+            data = data.with_columns(pl.lit("Unknown").alias("age_group"))
 
-    # FIXME
-    except Exception as e:
-        # If there's an error with the age column, use a default value
-        # to maintain the pipeline functionality
-        logger.warning("Error processing age column: %s", e)
-        data = data.with_columns(pl.lit("Unknown").alias("age_group"))
+    # Add sitetret if missing
+    if "sitetret" not in data.columns:
+        data = data.with_columns(pl.lit("unknown").alias("sitetret"))
 
-    # Rename and group by required columns
-    return (
-        data.rename({"attendances": "value"})
-        .group_by(
-            ["sitetret", "pod", "age_group", "tretspef", "measure"], maintain_order=True
-        )
-        .agg([pl.col("value").sum()])
-    )
+    # Add tretspef if missing
+    if "tretspef" not in data.columns:
+        data = data.with_columns(pl.lit("unknown").alias("tretspef"))
+
+    # Create value column from attendances if it exists, otherwise use 1 as default
+    if "attendances" in data.columns:
+        data = data.with_columns(pl.col("attendances").alias("value"))
+    else:
+        data = data.with_columns(pl.lit(1).alias("value"))
+
+    # Group by the needed columns and sum the value
+    return data.group_by(
+        ["sitetret", "pod", "age_group", "tretspef", "measure"], maintain_order=True
+    ).agg(pl.col("value").sum())
 
 
 def combine_converted_with_main_results(
@@ -502,20 +516,52 @@ def process_aae_converted_from_ip(data: pl.DataFrame) -> pl.DataFrame:
     Returns:
         The processed and aggregated data
     """
-    # Add pod column
-    data = data.with_columns(pl.lit("aae_type-05").alias("pod"))
+    # Create required columns if they don't exist
+    cols_to_add = []
 
-    # Add age_group column - similar to the Pandas version but with error handling
-    try:
-        data = data.with_columns(age_groups(pl.col("age")).alias("age_group"))
-    except Exception as e:
-        # If there's an error with the age column, use a default value
-        logger.warning("Error processing age column in AAE: %s", e)
-        data = data.with_columns(pl.lit("Unknown").alias("age_group"))
+    # Always add pod
+    cols_to_add.append(pl.lit("aae_type-05").alias("pod"))
 
-    # Rename group to measure and group by required columns
-    data = data.rename({"group": "measure"})
+    # Add age_group if it doesn't exist
+    if "age_group" not in data.columns:
+        # Default to "Unknown"
+        if "age" in data.columns:
+            # Try to create age groups if age column exists
+            try:
+                cols_to_add.append(age_groups(pl.col("age")).alias("age_group"))
+            except Exception as e:
+                logger.warning(f"Error processing age column in AAE: {e}")
+                cols_to_add.append(pl.lit("Unknown").alias("age_group"))
+        else:
+            cols_to_add.append(pl.lit("Unknown").alias("age_group"))
 
+    # Add other required columns if missing
+    required_cols = {
+        "sitetret": "unknown",
+        "attendance_category": "unknown",
+        "aedepttype": "unknown",
+        "acuity": "unknown",
+    }
+
+    for col, default in required_cols.items():
+        if col not in data.columns:
+            cols_to_add.append(pl.lit(default).alias(col))
+
+    # Add all columns at once (more efficient)
+    if cols_to_add:
+        data = data.with_columns(cols_to_add)
+
+    # Handle measure column (rename from group if exists)
+    if "group" in data.columns:
+        data = data.with_columns(pl.col("group").alias("measure"))
+    elif "measure" not in data.columns:
+        data = data.with_columns(pl.lit("unknown").alias("measure"))
+
+    # Make sure arrivals column exists for aggregation
+    if "arrivals" not in data.columns:
+        data = data.with_columns(pl.lit(1).alias("arrivals"))
+
+    # Group by required columns and sum arrivals
     return data.group_by(
         [
             "sitetret",
@@ -527,7 +573,7 @@ def process_aae_converted_from_ip(data: pl.DataFrame) -> pl.DataFrame:
             "measure",
         ],
         maintain_order=True,
-    ).agg([pl.col("arrivals").sum()])
+    ).agg(pl.col("arrivals").sum())
 
 
 def add_pod_to_data_op(data: pl.DataFrame) -> pl.DataFrame:
