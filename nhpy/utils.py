@@ -186,8 +186,6 @@ def _load_environment_variables() -> EnvironmentConfig:
         "AZ_STORAGE_EP",
         "AZ_STORAGE_RESULTS",
         "AZ_STORAGE_DATA",
-        "API_KEY",
-        "API_URL",
         "AZ_VALID_PATH",
     ]
 

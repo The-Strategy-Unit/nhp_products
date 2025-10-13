@@ -32,6 +32,8 @@ dependencies = [
     "msal-extensions>=1.1.0",
     "pyjwt>=2.10.1",
     "nhp-aci",
+    "pre-commit>=4.2.0",
+    "jupyter>=1.1.1",
 ]
 
 

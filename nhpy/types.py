@@ -31,8 +31,6 @@ class EnvironmentConfig(TypedDict):
     AZ_STORAGE_EP: str
     AZ_STORAGE_RESULTS: str
     AZ_STORAGE_DATA: str
-    API_KEY: str
-    API_URL: str
 
 
 class ProcessContext(TypedDict):

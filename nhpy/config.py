@@ -49,14 +49,6 @@ class Constants:
 
 # %%
 # Custom error types
-class APIResponseError(Exception):
-    """Raised when the API response cannot be parsed properly."""
-
-    def __init__(self, response=None, parsing_error=None, message=None):
-        self.response = response
-        self.parsing_error = parsing_error
-        self.message = message or f"Failed to parse API response: {parsing_error}"
-        super().__init__(self.message)
 
 
 class EnvironmentVariableError(Exception):
