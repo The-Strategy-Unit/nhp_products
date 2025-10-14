@@ -207,7 +207,7 @@ def _process_inpatient_results(
     reference_df = original_df.drop(["speldur", "classpat"])
 
     # Choose a moderate batch size balancing memory usage and performance
-    batch_size = 50
+    batch_size = 30
 
     # Process all runs
     start = time.perf_counter()
