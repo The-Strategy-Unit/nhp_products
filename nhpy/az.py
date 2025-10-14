@@ -430,7 +430,7 @@ def load_model_run_results_file(
     if cache_key not in _model_results_cache:
         _model_results_cache[cache_key] = {}
 
-    # Calculate batch range (centered on requested run_number if possible)
+    # Calculate batch range (centred on requested run_number if possible)
     half_batch = batch_size // 2 if batch_size is not None else 0
     batch_start = max(1, run_number - half_batch)
     batch_end = batch_start + (batch_size if batch_size is not None else 1)
