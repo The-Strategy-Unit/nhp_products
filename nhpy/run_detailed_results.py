@@ -33,7 +33,9 @@ Exit codes:
 # Imports
 
 import argparse
+import gc
 import os
+import resource
 import sys
 import time
 from logging import INFO
@@ -64,6 +66,15 @@ __all__ = ["run_detailed_results"]
 # %%
 # Get a logger for this module
 logger = get_logger()
+
+
+def get_memory_usage():
+    """Get current memory usage in MB."""
+    # Get memory info from resource module (more accurate than sys.getsizeof)
+    rusage = resource.getrusage(resource.RUSAGE_SELF)
+    # Return memory usage in MB
+    return rusage.ru_maxrss / 1024  # Convert KB to MB
+
 
 # Try to load from ~/.config/<project_name>/.env first, fall back to default behaviour
 project_name = os.path.basename(os.path.dirname(os.path.abspath(__name__)))
@@ -143,6 +154,9 @@ def _process_inpatient_results(
         ctx: dictionary with connections and parameters
         output_dir: Directory to save output files
     """
+    # Report memory usage at start
+    logger.info(f"Memory usage before IP processing: {get_memory_usage():.2f} MB")
+
     # Extract needed variables from ctx
     results_connection = ctx["results_connection"]
     data_connection = ctx["data_connection"]
@@ -169,11 +183,12 @@ def _process_inpatient_results(
     # Pre-create the reference dataframe copy once
     reference_df = original_df.copy().drop(columns=["speldur", "classpat"])
 
-    # Choose an appropriate batch size for your file sizes and memory constraints
-    batch_size = 20
+    # Choose a larger batch size for optimal I/O performance
+    batch_size = 30  # Balance between memory usage and I/O performance
 
     # Process all runs
     start = time.perf_counter()
+    logger.info(f"Starting IP processing with {get_memory_usage():.2f} MB memory usage")
     for run in tqdm(range(1, 257), desc="IP"):
         # Load with batch functionality - this will cache surrounding runs
         df = az.load_model_run_results_file(
@@ -200,7 +215,10 @@ def _process_inpatient_results(
                 model_runs[k] = []
             model_runs[k].append(v)
     end = time.perf_counter()
-    logger.info(f"All IP model runs were processed in {end - start:.3f} sec")
+    logger.info(
+        f"All IP model runs were processed in {end - start:.3f} sec, "
+        f"memory usage: {get_memory_usage():.2f} MB"
+    )
 
     # Process model runs dictionary after the loop completes
     model_runs_df = process_data.process_model_runs_dict(
@@ -215,6 +233,9 @@ def _process_inpatient_results(
             "maternity_delivery_in_spell",
             "measure",
         ],
+    )
+    logger.info(
+        f"IP data processed into dataframe, memory usage: {get_memory_usage():.2f} MB"
     )
 
     # Validate results
@@ -254,6 +275,16 @@ def _process_inpatient_results(
     model_runs_df.to_csv(f"{output_dir}/{scenario_name}_detailed_ip_results.csv")
     model_runs_df.to_parquet(f"{output_dir}/{scenario_name}_detailed_ip_results.parquet")
 
+    # Clean up memory
+    del model_runs_df, model_runs, original_df, reference_df
+    if "az" in sys.modules and hasattr(sys.modules["az"], "_model_results_cache"):
+        # Clear the cache after processing
+        sys.modules["az"]._model_results_cache.clear()
+    gc.collect()
+    logger.info(
+        f"Memory cleaned after IP processing, current usage: {get_memory_usage():.2f} MB"
+    )
+
 
 def _process_outpatient_results(
     context: ProcessContext,
@@ -266,6 +297,9 @@ def _process_outpatient_results(
         context: dictionary with connections and parameters
         output_dir: Directory to save output files
     """
+    # Report memory usage at start
+    logger.info(f"Memory usage before OP processing: {get_memory_usage():.2f} MB")
+
     # Extract needed variables from context
     results_connection = context["results_connection"]
     data_connection = context["data_connection"]
@@ -289,11 +323,12 @@ def _process_outpatient_results(
     # Pre-create the reference dataframe copy once
     reference_df = original_df.copy().drop(columns=["attendances", "tele_attendances"])
 
-    # Choose an appropriate batch size for your file sizes and memory constraints
-    batch_size = 20
+    # Choose a larger batch size for optimal I/O performance
+    batch_size = 30  # Balance between memory usage and I/O performance
 
     # Process all runs
     start = time.perf_counter()
+    logger.info(f"Starting OP processing with {get_memory_usage():.2f} MB memory usage")
     for run in tqdm(range(1, 257), desc="OP"):
         # Load with batch functionality - this will cache surrounding runs
         df = az.load_model_run_results_file(
@@ -339,7 +374,10 @@ def _process_outpatient_results(
                 op_model_runs[k] = []
             op_model_runs[k].append(v)
     end = time.perf_counter()
-    logger.info(f"All OP model runs were processed in {end - start:.3f} sec")
+    logger.info(
+        f"All OP model runs were processed in {end - start:.3f} sec, "
+        f"memory usage: {get_memory_usage():.2f} MB"
+    )
 
     # Process results
     op_model_runs_df = process_data.process_model_runs_dict(
@@ -375,6 +413,62 @@ def _process_outpatient_results(
         f"{output_dir}/{scenario_name}_detailed_op_results.parquet"
     )
 
+    # Clean up memory
+    del op_model_runs_df, op_model_runs, original_df, reference_df
+    if "az" in sys.modules and hasattr(sys.modules["az"], "_model_results_cache"):
+        # Clear the cache after processing
+        sys.modules["az"]._model_results_cache.clear()
+    gc.collect()
+    logger.info(
+        f"Memory cleaned after OP processing, current usage: {get_memory_usage():.2f} MB"
+    )
+
+
+def _validate_aae_metric(
+    ae_model_runs_df, actual_results_df, measure_name: str, metric_label: str
+):
+    """
+    Helper function to validate A&E metrics.
+
+    Args:
+        ae_model_runs_df: DataFrame with detailed results
+        actual_results_df: DataFrame with aggregated results
+        measure_name: Name of measure to validate (e.g., "ambulance", "walk-in")
+        metric_label: Label for the measure in logs (e.g., "Ambulance", "Walk-in")
+    """
+    detailed_value = (
+        ae_model_runs_df.loc[
+            (
+                slice(None),
+                slice(None),
+                slice(None),
+                slice(None),
+                slice(None),
+                slice(None),
+                measure_name,
+            ),
+            :,
+        ]
+        .sum()
+        .loc["mean"]
+        .round(0)
+    )
+
+    default_value = (
+        actual_results_df[actual_results_df["measure"] == measure_name]["mean"]
+        .sum()
+        .round(0)
+    )
+
+    # They're not always exactly the same because of rounding
+    try:
+        assert abs(default_value - detailed_value) <= 1
+    except AssertionError:
+        logger.warning(
+            f"""{metric_label} validation mismatch: default={default_value},
+            detailed={detailed_value}"""
+        )
+
 
 def _process_aae_results(
     context: ProcessContext,
@@ -387,6 +481,9 @@ def _process_aae_results(
         context: dictionary with connections and parameters
         output_dir: Directory to save output files
     """
+    # Report memory usage at start
+    logger.info(f"Memory usage before A&E processing: {get_memory_usage():.2f} MB")
+
     # Extract needed variables from context
     results_connection = context["results_connection"]
     data_connection = context["data_connection"]
@@ -410,11 +507,12 @@ def _process_aae_results(
     # Pre-create the reference dataframe copy once
     reference_df = original_df.drop(columns=["arrivals"])
 
-    # Choose an appropriate batch size for your file sizes and memory constraints
-    batch_size = 20
+    # Choose a larger batch size for optimal I/O performance
+    batch_size = 30  # Balance between memory usage and I/O performance
 
     # Process all runs
     start = time.perf_counter()
+    logger.info(f"Starting A&E processing with {get_memory_usage():.2f} MB memory usage")
     for run in tqdm(range(1, 257), desc="A&E"):
         # Load with batch functionality - this will cache surrounding runs
         df = az.load_model_run_results_file(
@@ -460,7 +558,10 @@ def _process_aae_results(
                 ae_model_runs[k] = []
             ae_model_runs[k].append(v)
     end = time.perf_counter()
-    logger.info(f"All AAE model runs were processed in {end - start:.3f} sec")
+    logger.info(
+        f"All AAE model runs were processed in {end - start:.3f} sec, "
+        f"memory usage: {get_memory_usage():.2f} MB"
+    )
 
     # Process results
     ae_model_runs_df = process_data.process_model_runs_dict(
@@ -476,76 +577,24 @@ def _process_aae_results(
         ],
     )
 
-    # Validate ambulance results
-    detailed_ambulance_principal = (
-        ae_model_runs_df.loc[
-            (
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                "ambulance",
-            ),
-            :,
-        ]
-        .sum()
-        .loc["mean"]
-        .round(0)
-    )
-    default_ambulance_principal = (
-        actual_results_df[actual_results_df["measure"] == "ambulance"]["mean"]
-        .sum()
-        .round(0)
-    )
-
-    # They're not always exactly the same because of rounding
-    try:
-        assert abs(default_ambulance_principal - detailed_ambulance_principal) <= 1
-    except AssertionError:
-        logger.warning(
-            f"""Ambulance validation mismatch: default={default_ambulance_principal},
-            detailed={detailed_ambulance_principal}"""
-        )
-
-    # Validate walk-in results
-    detailed_walkins_principal = (
-        ae_model_runs_df.loc[
-            (
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                "walk-in",
-            ),
-            :,
-        ]
-        .sum()
-        .loc["mean"]
-        .round(0)
-    )
-    default_walkins_principal = (
-        actual_results_df[actual_results_df["measure"] == "walk-in"]["mean"]
-        .sum()
-        .round(0)
-    )
-
-    # They're not always exactly the same because of rounding
-    try:
-        assert abs(default_walkins_principal - detailed_walkins_principal) <= 1
-    except AssertionError:
-        logger.warning(
-            f"""Walk-in validation mismatch: default={default_walkins_principal},
-            detailed={detailed_walkins_principal}"""
-        )
+    # Validate results
+    _validate_aae_metric(ae_model_runs_df, actual_results_df, "ambulance", "Ambulance")
+    _validate_aae_metric(ae_model_runs_df, actual_results_df, "walk-in", "Walk-in")
 
     # Save results
     ae_model_runs_df.to_csv(f"{output_dir}/{scenario_name}_detailed_ae_results.csv")
     ae_model_runs_df.to_parquet(
         f"{output_dir}/{scenario_name}_detailed_ae_results.parquet"
+    )
+
+    # Clean up memory
+    del ae_model_runs_df, ae_model_runs, original_df, reference_df
+    if "az" in sys.modules and hasattr(sys.modules["az"], "_model_results_cache"):
+        # Clear the cache after processing
+        sys.modules["az"]._model_results_cache.clear()
+    gc.collect()
+    logger.info(
+        f"Memory cleaned after A&E processing, current usage: {get_memory_usage():.2f} MB"
     )
 
 
@@ -578,6 +627,9 @@ def run_detailed_results(
         FileNotFoundError: If results folder or data version not found
         Various Azure exceptions: For authentication, network, or permission issues
     """
+    # Start the total timing
+    total_start_time = time.perf_counter()
+
     # Load environment variables if not provided
     account_url = account_url or os.getenv("AZ_STORAGE_EP", "")
     results_container = results_container or os.getenv("AZ_STORAGE_RESULTS", "")
@@ -613,6 +665,14 @@ def run_detailed_results(
     _process_aae_results(context, output_dir)
 
     scenario_name = context["scenario_name"]
+
+    # Calculate and report the total time
+    total_end_time = time.perf_counter()
+    total_duration = total_end_time - total_start_time
+    minutes, seconds = divmod(total_duration, 60)
+    logger.info(
+        f"Total processing time for Pandas implementation: {int(minutes)}m {seconds:.2f}s"
+    )
 
     # Return paths to output files
     return {
