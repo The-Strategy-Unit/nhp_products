@@ -2,11 +2,15 @@
 
 import polars as pl
 
+# %% [markdown]
+# ## Results Format Conversion
 
+
+# %%
 def convert_results_format(results: pl.DataFrame, include_baseline=True) -> pl.DataFrame:
     """Get principal and baseline from new results format parquet files.
 
-    Highly optimized Polars implementation that processes results with columns "model_run"
+    Optimised Polars implementation that processes results with columns "model_run"
     and "value", replacing these with columns "baseline", "model_runs", and "mean".
     The function handles both cases with and without baseline data.
 
@@ -21,7 +25,7 @@ def convert_results_format(results: pl.DataFrame, include_baseline=True) -> pl.D
     # Get all columns except 'value' and 'model_run' for grouping
     group_cols = [col for col in results.columns if col not in {"value", "model_run"}]
 
-    # Convert to lazy for better optimization
+    # Convert to lazy for better optimisation
     lazy_results = results.lazy()
 
     if include_baseline:
@@ -30,7 +34,7 @@ def convert_results_format(results: pl.DataFrame, include_baseline=True) -> pl.D
         # This implementation:
         # 1. Uses partitioning by group columns to get both baseline and model runs
         #    in a single pass
-        # 2. Takes advantage of Polars' lazy evaluation for query optimization
+        # 2. Takes advantage of Polars' lazy evaluation for query optimisation
         # 3. Minimises data movement and reshaping operations
         df_combined = (
             lazy_results.with_columns(

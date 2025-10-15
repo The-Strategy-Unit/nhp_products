@@ -5,6 +5,8 @@ This module reuses non-Pandas functions from process_data.py and reimplements on
 Pandas-specific functions to use Polars instead.
 """
 
+# %%
+# Imports
 import logging
 from collections import defaultdict
 
@@ -14,9 +16,16 @@ import polars as pl
 from nhpy.config import Constants
 from nhpy.process_data import n_runs
 
+# %%
+# Logging
 logger = logging.getLogger(__name__)
 
 
+# %% [markdown]
+# ## Age Group Classification
+
+
+# %%
 def age_groups(age: pl.Expr | pl.Series) -> pl.Expr:
     """Cut age into groups
 
@@ -59,6 +68,11 @@ def age_groups(age: pl.Expr | pl.Series) -> pl.Expr:
     )
 
 
+# %% [markdown]
+# ## Inpatient Data Processing
+
+
+# %%
 def add_pod_to_data_ip(data: pl.DataFrame) -> pl.DataFrame:
     """Adds the POD column to data"""
 
@@ -92,6 +106,7 @@ def add_pod_to_data_ip(data: pl.DataFrame) -> pl.DataFrame:
     return data
 
 
+# %%
 def process_ip_results(data: pl.DataFrame, los_groups: defaultdict) -> pl.DataFrame:
     """
     Processes the row level inpatients data into
@@ -127,6 +142,7 @@ def process_ip_results(data: pl.DataFrame, los_groups: defaultdict) -> pl.DataFr
     return data
 
 
+# %%
 def process_ip_activity_avoided(data: pl.DataFrame) -> pl.DataFrame:
     """
     Process the IP activity_avoided, adding pod and age_group,
@@ -169,6 +185,25 @@ def process_ip_activity_avoided(data: pl.DataFrame) -> pl.DataFrame:
         ]
     )
 
+    # The `unpivot` method transforms data from wide format to long format.
+    # Here it converts separate columns for different measures into a single value column
+    # with a corresponding measure column.
+    #
+    # Example:
+    # ```
+    # # Wide format (before):
+    # sushrg | los_group | pod | admissions | beddays | procedures
+    # ------|-----------|-----|------------|---------|------------
+    # AA22A  | 0 days    | ip  | 10         | 10      | 5
+    #
+    # # Long format (after):
+    # sushrg | los_group | pod | measure    | value
+    # ------|-----------|-----|------------|-------
+    # AA22A  | 0 days    | ip  | admissions | 10
+    # AA22A  | 0 days    | ip  | beddays    | 10
+    # AA22A  | 0 days    | ip  | procedures | 5
+    # ```
+    #
     # Convert to long format using unpivot
     data = data.unpivot(
         index=["sushrg", "los_group", "pod"],
@@ -194,6 +229,11 @@ def process_ip_activity_avoided(data: pl.DataFrame) -> pl.DataFrame:
     return data
 
 
+# %% [markdown]
+# ## Statistical Processing
+
+
+# %%
 def process_model_runs_dict(
     model_runs: dict, columns: list, all_runs_kept: bool = False
 ) -> pl.DataFrame:
@@ -261,6 +301,11 @@ def process_model_runs_dict(
     return model_runs_df
 
 
+# %% [markdown]
+# ## Detailed Results Processing
+
+
+# %%
 def process_ip_detailed_results(data: pl.DataFrame) -> pl.DataFrame:
     """Process the IP detailed results, adding pod and age_group, and grouping by
     sitetret, age_group, sex, pod, tretspef, los_group, maternity_delivery_in_spell,
@@ -346,6 +391,7 @@ def process_ip_detailed_results(data: pl.DataFrame) -> pl.DataFrame:
     return data
 
 
+# %%
 def process_op_detailed_results(data: pl.DataFrame) -> pl.DataFrame:
     """Process the OP detailed results, adding pod and age_group, and grouping by
     sitetret, age_group, sex, pod, tretspef, and measure
@@ -356,7 +402,8 @@ def process_op_detailed_results(data: pl.DataFrame) -> pl.DataFrame:
     Returns:
         The processed and aggregated data
     """
-    # Convert wide format to long format using unpivot
+    # Transform outpatient data that comes in wide format (with separate columns
+    # for different attendance types) to long format using the unpivot operation.
     measures = data.unpivot(
         index=["rn"],
         on=["attendances", "tele_attendances"],
@@ -378,6 +425,7 @@ def process_op_detailed_results(data: pl.DataFrame) -> pl.DataFrame:
     return data
 
 
+# %%
 def process_op_converted_from_ip(data: pl.DataFrame) -> pl.DataFrame:
     """Process the OP activity converted from IP, adding pod and age_group, and
     grouping by sitetret, age_group, sex, pod, tretspef, and measure.
@@ -429,6 +477,28 @@ def process_op_converted_from_ip(data: pl.DataFrame) -> pl.DataFrame:
     ).agg(pl.col("value").sum())
 
 
+# %% [markdown]
+# ### Combining Data Sets
+#
+# The `combine_converted_with_main_results` function joins two dataframes and combines
+# their values. This uses a join operation to match rows based on common columns, followed
+# by column operations to sum the values.
+#
+# Example of the joining pattern:
+# ```python
+# # Joining two dataframes with matching keys, then summing the values
+# df1 = pl.DataFrame({"key": ["A", "B"], "value": [1, 2]})
+# df2 = pl.DataFrame({"key": ["A", "C"], "value": [10, 30]})
+#
+# # Result: DataFrame with keys A, B, C and summed values
+# # A: 11 (1+10), B: 2, C: 30
+# combined = df1.join(df2, on="key", how="outer").with_columns(
+#     [(pl.col("value") + pl.col("value_right").fill_null(0)).alias("value")]
+# ).drop("value_right")
+# ```
+
+
+# %%
 def combine_converted_with_main_results(
     df_converted: pl.DataFrame, df: pl.DataFrame
 ) -> pl.DataFrame:
@@ -469,13 +539,18 @@ def combine_converted_with_main_results(
     return result
 
 
+# %% [markdown]
+# ## A&E Data Processing
+
+
+# %%
 def process_aae_results(data: pl.DataFrame) -> pl.DataFrame:
-    """Process the AAE detailed results, adding pod and age_group,
+    """Process the A&E detailed results, adding pod and age_group,
     and grouping by sitetret, pod, age_group, attendance_category,
     aedepttype, acuity, and measure
 
     Args:
-        data: the AAE activity in each Monte Carlo simulation
+        data: the A&E activity in each Monte Carlo simulation
 
     Returns:
         The processed and aggregated data
@@ -505,13 +580,14 @@ def process_aae_results(data: pl.DataFrame) -> pl.DataFrame:
     ).agg([pl.col("arrivals").sum()])
 
 
+# %%
 def process_aae_converted_from_ip(data: pl.DataFrame) -> pl.DataFrame:
-    """Process the AAE SDEC activity converted from IP, adding pod and age_group,
+    """Process the A&E SDEC activity converted from IP, adding pod and age_group,
     and grouping by sitetret, age_group, pod, aedepttype, attendance_category, acuity
     and measure.
 
     Args:
-        data: the AAE SDEC activity converted from IP in each Monte Carlo simulation
+        data: the A&E SDEC activity converted from IP in each Monte Carlo simulation
 
     Returns:
         The processed and aggregated data
@@ -530,7 +606,7 @@ def process_aae_converted_from_ip(data: pl.DataFrame) -> pl.DataFrame:
             try:
                 cols_to_add.append(age_groups(pl.col("age")).alias("age_group"))
             except Exception as e:
-                logger.warning(f"Error processing age column in AAE: {e}")
+                logger.warning(f"Error processing age column in A&E: {e}")
                 cols_to_add.append(pl.lit("Unknown").alias("age_group"))
         else:
             cols_to_add.append(pl.lit("Unknown").alias("age_group"))
@@ -576,6 +652,11 @@ def process_aae_converted_from_ip(data: pl.DataFrame) -> pl.DataFrame:
     ).agg(pl.col("arrivals").sum())
 
 
+# %% [markdown]
+# ## Outpatient Data Processing
+
+
+# %%
 def add_pod_to_data_op(data: pl.DataFrame) -> pl.DataFrame:
     """Adds the POD column to outpatient data"""
     data = data.with_columns(
@@ -592,6 +673,7 @@ def add_pod_to_data_op(data: pl.DataFrame) -> pl.DataFrame:
     return data
 
 
+# %%
 def get_op_mitigators_consultant(df: pl.DataFrame) -> pl.DataFrame:
     """Consultant to consultant mitigators."""
 
@@ -619,8 +701,9 @@ def get_op_mitigators_consultant(df: pl.DataFrame) -> pl.DataFrame:
     return cons_df
 
 
+# %%
 def get_op_mitigators_followup(df: pl.DataFrame) -> pl.DataFrame:
-    """Followup reduction mitigators. NOT FIRST, NO PROCEDURES"""
+    """Followup reduction mitigators. NOT first, NO PROCEDURES"""
 
     # Filter for follow-up without procedures
     followup_df = df.filter(~pl.col("has_procedures") & ~pl.col("is_first")).select(

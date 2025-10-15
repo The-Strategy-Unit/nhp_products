@@ -33,13 +33,19 @@ logger = logging.getLogger(__name__)
 _model_results_cache: dict[str, dict[int, pl.DataFrame]] = {}
 
 
+# %% [markdown]
+# ## Parquet File Loading Functions
+
+
+# %%
 def load_parquet_file(
     container_client: ContainerClient,
     path_to_file: str,
     max_retries: int = 3,
     timeout: int = 120,
 ) -> pl.DataFrame:
-    """Loads parquet file from Azure
+    """Loads parquet files from Azure Blob Storage with retry logic
+    to handle transient errors. It implements an exponential backoff strategy for retries.
 
     Args:
         container_client: Connection to the container
@@ -111,6 +117,14 @@ def load_parquet_file(
     )
 
 
+# %% [markdown]
+# ## Data File Loading Functions
+#
+# These functions load different types of model data files from Azure Blob Storage.
+# They handle versioning differences and support both current and legacy data formats.
+
+
+# %%
 def load_data_file(
     container_client: ContainerClient,
     version: str,
@@ -161,6 +175,7 @@ def load_data_file(
         raise
 
 
+# %%
 def load_data_file_old(
     container_client: ContainerClient,
     version: str,
@@ -192,6 +207,11 @@ def load_data_file_old(
     return data
 
 
+# %% [markdown]
+# ## Model Run Results Loading
+
+
+# %%
 def load_model_run_results_file(
     container_client: ContainerClient,
     params: ModelRunParams,
@@ -256,7 +276,7 @@ def load_model_run_results_file(
     ):
         return _model_results_cache[cache_key][run_number]
 
-    # Initialize cache for this key if needed
+    # Initialise cache for this key if needed
     if cache_key not in _model_results_cache:
         _model_results_cache[cache_key] = {}
 
@@ -288,7 +308,7 @@ def load_model_run_results_file(
             )
             if run == run_number:
                 requested_run_loaded = True
-        except (ResourceNotFoundError, ValueError, AzureError) as e:
+        except (ResourceNotFoundError, ValueError, AzureError):
             if run == run_number:
                 raise
             continue
@@ -307,6 +327,11 @@ def load_model_run_results_file(
     return _model_results_cache[cache_key][run_number]
 
 
+# %% [markdown]
+# ## Aggregated Results Loading
+
+
+# %%
 def load_agg_results(
     container_client: ContainerClient, path_to_agg_files: str, filename: str = "default"
 ) -> pl.DataFrame:
