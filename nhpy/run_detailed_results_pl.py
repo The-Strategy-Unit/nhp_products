@@ -1,6 +1,6 @@
 """Generate detailed results for a model scenario - Polars implementation.
 
-This module produces detailed aggregations of IP, OP, and AAE model results
+This module produces detailed aggregations of IP, OP, and A&E model results
 in CSV and Parquet formats using Polars for improved performance. It assumes the
 scenario has already been run with `full_model_results = True`.
 Outputs are stored in a `data/` folder.
@@ -32,6 +32,7 @@ Exit codes:
     130: Operation cancelled (Ctrl+C)
 """
 
+# %%
 # Imports
 import argparse
 import gc
@@ -66,7 +67,11 @@ from nhpy.utils import (
     get_logger,
 )
 
+# %% [markdown]
+# ## Type Definitions and Initialisation
 
+
+# %%
 # Create a Polars-specific version of ProcessContext
 class ProcessContext(TypedDict):
     """Context for detailed results processing with Polars."""
@@ -91,14 +96,21 @@ __all__ = ["run_detailed_results"]
 logger = get_logger()
 
 
+# %%
 def get_memory_usage():
-    """Get current memory usage in MB."""
+    """Get current memory usage in MB.
+
+    Uses the resource module which provides more accurate memory usage information
+    than sys.getsizeof. This helps monitor memory consumption during the processing
+    of large datasets to prevent out-of-memory errors.
+    """
     # Get memory info from resource module (more accurate than sys.getsizeof)
     rusage = resource.getrusage(resource.RUSAGE_SELF)
     # Return memory usage in MB
     return rusage.ru_maxrss / 1024  # Convert KB to MB
 
 
+# %%
 # Try to load from ~/.config/<project_name>/.env first, fall back to default behaviour
 project_name = Path(__name__).resolve().parent.name
 config_env_path = Path(f"~/.config/{project_name}/.env").expanduser()
@@ -107,14 +119,22 @@ if config_env_path.exists():
 else:
     load_dotenv()
 
+# %% [markdown]
+# ## Connection and Parameter Initialisation
 
+
+# %%
 def _initialize_connections_and_params(
     results_path: str,
     account_url: str,
     results_container: str,
     data_container: str,
 ) -> ProcessContext:
-    """Initialize connections and load parameters from the aggregated results.
+    """Initialise connections and load parameters from the aggregated results.
+
+    Sets up all the necessary connections to Azure storage and loads parameters
+    for processing detailed results. Creates a context object with all required
+    information for the processing pipeline.
 
     Args:
         results_path: Path to the aggregated model results
@@ -127,7 +147,6 @@ def _initialize_connections_and_params(
 
     Raises:
         FileNotFoundError: If results folder or data version not found
-
     """
     # Connections and params
     results_connection = az.connect_to_container(account_url, results_container)
@@ -167,12 +186,20 @@ def _initialize_connections_and_params(
     }
 
 
+# %% [markdown]
+# ## Inpatient Results Processing
+
+
+# %%
 def _process_inpatient_results(
     ctx: ProcessContext,
     output_dir: str,
 ) -> None:
-    """
-    Process inpatient detailed results.
+    """Process inpatient detailed results for all 256 Monte Carlo simulations.
+
+    Loads original data, processes each of the 256 model runs, and aggregates results
+    into statistical summaries. Uses batch loading with caching for optimal performance
+    and memory management. Saves results to CSV and Parquet files.
 
     Args:
         ctx: dictionary with connections and parameters
@@ -304,12 +331,21 @@ def _process_inpatient_results(
     )
 
 
+# %% [markdown]
+# ## Outpatient Results Processing
+
+
+# %%
 def _process_outpatient_results(
     context: ProcessContext,
     output_dir: str,
 ) -> None:
-    """
-    Process outpatient detailed results.
+    """Process outpatient detailed results for all 256 Monte Carlo simulations.
+
+    Handles both regular outpatient activity and activity converted from inpatient.
+    Combines these two sources, processes all 256 model runs, and aggregates results.
+    Uses batch loading with caching for optimal performance.
+    Saves results to CSV and Parquet files.
 
     Args:
         context: dictionary with connections and parameters
@@ -317,6 +353,7 @@ def _process_outpatient_results(
     """
     # Report memory usage at start
     logger.info(f"Memory usage before OP processing: {get_memory_usage():.2f} MB")
+
     # Extract needed variables from context
     results_connection = context["results_connection"]
     data_connection = context["data_connection"]
@@ -446,13 +483,22 @@ def _process_outpatient_results(
     )
 
 
+# %% [markdown]
+# ## A&E Validation Helper
+
+
+# %%
 def _validate_aae_metric(
     ae_model_runs_df: pl.DataFrame,
     actual_results_df: pl.DataFrame,
     measure_name: str,
     metric_label: str,
 ) -> None:
-    """Helper function to validate A&E metrics between detailed and aggregated results.
+    """Validate A&E metrics between detailed and aggregated results.
+
+    Compares the detailed processed results with the original aggregated results
+    to ensure consistency. Warns if there's a discrepancy greater than 1 (allowing
+    for minor rounding differences).
 
     Args:
         ae_model_runs_df: DataFrame with detailed results
@@ -486,12 +532,21 @@ def _validate_aae_metric(
         )
 
 
+# %% [markdown]
+# ## A&E Results Processing
+
+
+# %%
 def _process_aae_results(
     context: ProcessContext,
     output_dir: str,
 ) -> None:
-    """
-    Process A&E detailed results.
+    """Process A&E detailed results for all 256 Monte Carlo simulations.
+
+    Handles both regular A&E activity and SDEC activity converted from inpatient.
+    Combines these two sources, processes all 256 model runs, and aggregates results.
+    Validates results against aggregated results for both ambulance and walk-in activity.
+    Saves results to CSV and Parquet files.
 
     Args:
         context: dictionary with connections and parameters
@@ -575,7 +630,7 @@ def _process_aae_results(
 
     end = time.perf_counter()
     logger.info(
-        f"All AAE model runs were processed in {end - start:.3f} sec, "
+        f"All A&E model runs were processed in {end - start:.3f} sec, "
         f"memory usage: {get_memory_usage():.2f} MB"
     )
 
@@ -613,6 +668,17 @@ def _process_aae_results(
     )
 
 
+# %% [markdown]
+# ## Main Function
+#
+# This is the primary function for generating detailed results. It:
+# 1. Sets up connections and loads parameters
+# 2. Processes inpatient (IP), outpatient (OP), and A&E results
+# 3. Saves the results to files
+# 4. Reports timing information
+
+
+# %%
 def run_detailed_results(
     results_path: str,
     output_dir: str | None = None,
@@ -623,7 +689,7 @@ def run_detailed_results(
     """Generate detailed results for a model scenario using Polars.
 
     Takes an existing scenario results path and produces detailed aggregations
-    of IP, OP, and AAE model results in CSV and Parquet formats.
+    of IP, OP, and A&E model results in CSV and Parquet formats.
 
     Args:
         results_path: Path to existing aggregated results
@@ -670,7 +736,7 @@ def run_detailed_results(
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # Initialize connections and load parameters
+    # Initialise connections and load parameters
     context = _initialize_connections_and_params(
         results_path,
         account_url,
@@ -704,6 +770,11 @@ def run_detailed_results(
     }
 
 
+# %% [markdown]
+# ## CLI Entry Point
+
+
+# %%
 def main() -> int:
     """CLI entry point when module is run directly.
 
@@ -751,7 +822,6 @@ def main() -> int:
         ServiceRequestError,
         FileNotFoundError,
     ):
-        # Don't include the exception object, as it's already included by logger.exception
         logger.exception("main():Error occurred")
         return ExitCodes.EXCEPTION_CODE
     except KeyboardInterrupt:
@@ -762,6 +832,7 @@ def main() -> int:
         return ExitCodes.SUCCESS_CODE
 
 
+# %%
 # Main guardrail
 if __name__ == "__main__":
     sys.exit(main())
