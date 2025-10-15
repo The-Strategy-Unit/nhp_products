@@ -33,6 +33,19 @@ class Constants:
     PATH_DEPTH = 5
     TIMEOUT_SEC = 30
 
+    # Age group boundaries
+    AGE_UNKNOWN = -1
+    AGE_INFANT = 0
+    AGE_TODDLER = 5
+    AGE_CHILD = 10
+    AGE_ADOLESCENT = 16
+    AGE_YOUNG_ADULT = 18
+    AGE_ADULT = 35
+    AGE_MIDDLE_AGE = 50
+    AGE_SENIOR = 65
+    AGE_ELDERLY = 75
+    AGE_OLDEST = 85
+
 
 # %%
 # Custom error types
