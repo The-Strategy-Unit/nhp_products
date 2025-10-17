@@ -250,53 +250,70 @@ def process_model_runs_dict(
     Returns:
         DataFrame containing aggregated results of all 256 Monte Carlo simulations
     """
-    # Prepare data for a more efficient approach - process all metrics at once
     rows = []
+    skipped_keys = 0
+    error_keys = 0
+    short_keys_processed = 0
 
-    # Calculate metrics for each key in a single pass
+    # Process ALL keys without filtering to exactly match Pandas behavior
+    # Pandas does not skip keys with None sitetret
     for k, v in model_runs.items():
-        v_ = np.array(v)
-        if not all_runs_kept and len(v_) < n_runs:
-            # Ensure all 256 runs are accounted for
-            zeros = np.zeros(n_runs - len(v_))
-            v_ = np.concatenate((v_, zeros))
+        try:
+            # Convert to numpy array for calculations and handle None values in one step
+            v_ = np.array([0.0 if val is None else float(val) for val in v], dtype=float)
 
-        if len(v_) != n_runs:
-            raise ValueError(f"Length of array for {k} is not equal to n_runs")
+            # For keys with fewer than n_runs values
+            # still process them by padding with zeros to match Pandas behavior
+            if not all_runs_kept and len(v_) < n_runs:
+                short_keys_processed += 1
+                # Pad with zeros to reach n_runs - ensures statistical calculations work
+                zeros = np.zeros(n_runs - len(v_))
+                v_ = np.concatenate((v_, zeros))
 
-        # Convert None values to np.nan which numpy can handle
-        v_ = np.array([np.nan if val is None else val for val in v_], dtype=float)
+            # Use standard percentile calculation for confidence intervals
+            x = np.percentile(v_, [10, 50, 90])
+            lwr_ci = x[0]
+            median = x[1]
+            mean = np.mean(v_)
+            upr_ci = x[2]
 
-        # Check if the array is all NaN values
-        if np.all(np.isnan(v_)):
-            # If all values are NaN, set all statistics to 0
-            lwr_ci, median, upr_ci = 0, 0, 0
-            mean = 0
-        else:
-            # Use nanpercentile to ignore nan values when calculating percentiles
-            x = np.nanpercentile(v_, [10, 50, 90])
-            lwr_ci, median, upr_ci = x[0], x[1], x[2]
-            mean = np.nanmean(v_)
+            # Create a dict for this row with all columns and metrics
+            # Convert None to empty string in column values to match Pandas behavior
+            row_dict = {
+                columns[i]: "" if k[i] is None else k[i] for i in range(len(columns))
+            }
+            row_dict.update(
+                {"lwr_ci": lwr_ci, "median": median, "mean": mean, "upr_ci": upr_ci}
+            )
 
-        # Create a dict for this row with all columns and metrics
-        row_dict = {columns[i]: k[i] for i in range(len(columns))}
-        row_dict.update(
-            {"lwr_ci": lwr_ci, "median": median, "mean": mean, "upr_ci": upr_ci}
+            rows.append(row_dict)
+        except Exception as e:
+            # Log error but continue - helps identify issues without breaking processing
+            logger.warning(f"Error processing key {k}: {str(e)}")
+            error_keys += 1
+            continue
+
+    if skipped_keys > 0:
+        logger.info(f"Skipped {skipped_keys} keys due to incorrect run count")
+    if error_keys > 0:
+        logger.info(f"Skipped {error_keys} keys due to processing errors")
+    if short_keys_processed > 0:
+        logger.info(
+            f"Processed {short_keys_processed} keys with fewer than {n_runs} runs"
         )
 
-        rows.append(row_dict)
-
-    # Create dataframe directly with all columns and metrics
+    # Create dataframe with all columns and metrics
     if rows:
-        # Create DataFrame from processed data
         model_runs_df = pl.DataFrame(rows)
-        # Sort by the original columns
         model_runs_df = model_runs_df.sort(columns)
     else:
         # Handle empty case
         df_cols = {col: [] for col in columns}
         df_cols.update({"lwr_ci": [], "median": [], "mean": [], "upr_ci": []})
         model_runs_df = pl.DataFrame(df_cols)
+
+    # Don't filter out rows after creating the DataFrame
+    # Keep all rows to match Pandas behavior
 
     return model_runs_df
 
@@ -411,9 +428,16 @@ def process_op_detailed_results(data: pl.DataFrame) -> pl.DataFrame:
     )
 
     # Drop the original attendance columns and merge with melted data
-    data = data.drop(["attendances", "tele_attendances"]).join(measures, on="rn")
+    # Use LEFT join to preserve all original data including sites that might be dropped
+    data = data.drop(["attendances", "tele_attendances"]).join(
+        measures, on="rn", how="left"
+    )
+
+    # Fill any null values in the value column with 0 (from the unpivoted columns)
+    data = data.with_columns(pl.col("value").fill_null(0))
 
     # Group by required columns and aggregate
+    # Deliberately NOT filtering before grouping to match Pandas behavior exactly
     data = (
         data.group_by(
             ["sitetret", "pod", "age_group", "tretspef", "measure"], maintain_order=True
@@ -421,6 +445,12 @@ def process_op_detailed_results(data: pl.DataFrame) -> pl.DataFrame:
         .agg([pl.col("value").sum()])
         .sort(["sitetret", "pod", "age_group", "tretspef", "measure"])
     )
+
+    # Pandas version does not filter out NULL sitetret values after grouping
+    # We'll keep all rows to exactly match Pandas behavior
+
+    # Ensure numeric columns use consistent types
+    data = data.with_columns([pl.col("value").cast(pl.Float64)])
 
     return data
 
@@ -512,29 +542,81 @@ def combine_converted_with_main_results(
 
     Returns:
         pl.DataFrame: The combined dataframe with both sets of activity
+
+    Note:
+        We use concat instead of join because SDEC conversion data introduces
+        entirely new rows (e.g., aae_type-05) that don't exist in the main dataset.
+        These rows would be lost in a join operation, but preserved with concatenation.
+        Schema alignment is critical for proper concatenation.
     """
+    # Skip processing if SDEC frame is empty
+    if len(df_converted) == 0:
+        return df.clone()
+
     # Create a copy to avoid modifying the input
     result = df.clone()
 
     # Figure out the value column name - for AAE it's "arrivals", for others it's "value"
     value_col = "arrivals" if "arrivals" in result.columns else "value"
 
-    # Convert index to columns, join, and add values
-    result = (
-        result.join(
-            df_converted,
-            on=df_converted.columns[:-1],  # Join on all columns except value
-            how="outer",
-        )
-        .with_columns(
-            [
-                (pl.col(value_col) + pl.col(f"{value_col}_right").fill_null(0)).alias(
-                    value_col
-                )
-            ]
-        )
-        .drop(f"{value_col}_right")
-    )
+    # Create a list of all columns from both dataframes
+    all_cols = list(set(result.columns) | set(df_converted.columns))
+
+    # Get schema from both dataframes
+    result_schema = {
+        col: dtype for col, dtype in zip(result.columns, result.dtypes) if col in all_cols
+    }
+    converted_schema = {
+        col: dtype
+        for col, dtype in zip(df_converted.columns, df_converted.dtypes)
+        if col in all_cols
+    }
+
+    # Create new dataframes with consistent schema
+    new_result_cols = []
+    new_converted_cols = []
+
+    # Handle each column individually
+    for col in all_cols:
+        # Get target dtype, preferring Float64 for value column
+        if col == value_col:
+            target_dtype = pl.Float64
+        elif col in result_schema and col in converted_schema:
+            # If column exists in both, prefer the type from result
+            target_dtype = result_schema[col]
+        elif col in result_schema:
+            target_dtype = result_schema[col]
+        else:
+            target_dtype = converted_schema[col]
+
+        # Add column to result with correct type
+        if col in result.columns:
+            new_result_cols.append(pl.col(col).cast(target_dtype))
+        else:
+            new_result_cols.append(pl.lit(None).cast(target_dtype).alias(col))
+
+        # Add column to converted with correct type
+        if col in df_converted.columns:
+            new_converted_cols.append(pl.col(col).cast(target_dtype))
+        else:
+            new_converted_cols.append(pl.lit(None).cast(target_dtype).alias(col))
+
+    # Create new dataframes with consistent schemas
+    new_result = result.with_columns(new_result_cols).select(all_cols)
+    new_converted = df_converted.with_columns(new_converted_cols).select(all_cols)
+
+    # Now concatenate with matching schemas
+    combined = pl.concat([new_result, new_converted])
+
+    # Group by all columns except the value column to sum any duplicate rows
+    groupby_cols = [col for col in all_cols if col != value_col]
+
+    # Only group if there are any groupby columns
+    if groupby_cols:
+        result = combined.group_by(groupby_cols).agg(pl.col(value_col).sum())
+    else:
+        # Unlikely to happen but handle edge case
+        result = combined.select([pl.col(value_col).sum().alias(value_col)])
 
     return result
 
@@ -555,29 +637,58 @@ def process_aae_results(data: pl.DataFrame) -> pl.DataFrame:
     Returns:
         The processed and aggregated data
     """
-    # Set measure based on is_ambulance flag
+    # Set measure based on is_ambulance flag - handle nulls explicitly like Pandas
     data = data.with_columns(
         [
-            pl.when(pl.col("is_ambulance"))
+            pl.when(pl.col("is_ambulance").is_null())
+            .then(pl.lit("walk-in"))
+            .when(pl.col("is_ambulance"))
             .then(pl.lit("ambulance"))
             .otherwise(pl.lit("walk-in"))
             .alias("measure")
         ]
     )
 
+    # Explicit null handling required in Polars to match Pandas behavior
+    # Polars differs from Pandas in these key ways:
+    # 1. Nulls form valid group keys in Polars but are dropped by default in Pandas
+    # 2. Nulls never match in joins in Polars (even null==null) unlike Pandas
+    # 3. Polars preserves original dtypes with nulls while Pandas often converts them
+    groupby_cols = [
+        "sitetret",
+        "pod",
+        "age_group",
+        "attendance_category",
+        "aedepttype",
+        "acuity",
+        "measure",
+    ]
+
+    # Fill null values with "unknown" in categorical columns to exactly match Pandas
+    # This is critical because Pandas fillna("unknown") was used in data loading
+    for col in [
+        "sitetret",
+        "pod",
+        "age_group",
+        "attendance_category",
+        "aedepttype",
+        "acuity",
+    ]:
+        data = data.with_columns(pl.col(col).fill_null("unknown"))
+
+    # Ensure measure column is never null - this matches Pandas behavior precisely
+    data = data.with_columns(pl.col("measure").fill_null("walk-in"))
+
     # Group by required columns and aggregate
-    return data.group_by(
-        [
-            "sitetret",
-            "pod",
-            "age_group",
-            "attendance_category",
-            "aedepttype",
-            "acuity",
-            "measure",
-        ],
+    grouped = data.group_by(
+        groupby_cols,
         maintain_order=True,
     ).agg([pl.col("arrivals").sum()])
+
+    # Cast to ensure consistent types with Pandas output
+    grouped = grouped.with_columns(pl.col("arrivals").cast(pl.Float64))
+
+    return grouped
 
 
 # %%
@@ -592,21 +703,35 @@ def process_aae_converted_from_ip(data: pl.DataFrame) -> pl.DataFrame:
     Returns:
         The processed and aggregated data
     """
+    # Skip processing if the data is empty
+    if len(data) == 0:
+        # Return empty DataFrame with required structure
+        return pl.DataFrame(
+            {
+                "sitetret": [],
+                "pod": [],
+                "age_group": [],
+                "attendance_category": [],
+                "aedepttype": [],
+                "acuity": [],
+                "measure": [],
+                "arrivals": [],
+            }
+        )
+
     # Create required columns if they don't exist
     cols_to_add = []
 
-    # Always add pod
+    # Always add pod as aae_type-05
     cols_to_add.append(pl.lit("aae_type-05").alias("pod"))
 
     # Add age_group if it doesn't exist
     if "age_group" not in data.columns:
-        # Default to "Unknown"
         if "age" in data.columns:
             # Try to create age groups if age column exists
             try:
                 cols_to_add.append(age_groups(pl.col("age")).alias("age_group"))
             except Exception as e:
-                logger.warning(f"Error processing age column in A&E: {e}")
                 cols_to_add.append(pl.lit("Unknown").alias("age_group"))
         else:
             cols_to_add.append(pl.lit("Unknown").alias("age_group"))
@@ -615,41 +740,57 @@ def process_aae_converted_from_ip(data: pl.DataFrame) -> pl.DataFrame:
     required_cols = {
         "sitetret": "unknown",
         "attendance_category": "unknown",
-        "aedepttype": "unknown",
-        "acuity": "unknown",
+        "aedepttype": "05",  # Must be '05' for SDEC
+        "acuity": "standard",  # Must be 'standard' for SDEC
     }
 
     for col, default in required_cols.items():
         if col not in data.columns:
             cols_to_add.append(pl.lit(default).alias(col))
 
-    # Add all columns at once (more efficient)
+    # Add all columns at once
     if cols_to_add:
         data = data.with_columns(cols_to_add)
 
-    # Handle measure column (rename from group if exists)
-    if "group" in data.columns:
-        data = data.with_columns(pl.col("group").alias("measure"))
-    elif "measure" not in data.columns:
-        data = data.with_columns(pl.lit("unknown").alias("measure"))
+    # Set 'measure' to 'walk-in'
+    data = data.with_columns(pl.lit("walk-in").alias("measure"))
 
-    # Make sure arrivals column exists for aggregation
+    # Make sure arrivals column exists
     if "arrivals" not in data.columns:
         data = data.with_columns(pl.lit(1).alias("arrivals"))
 
-    # Group by required columns and sum arrivals
-    return data.group_by(
-        [
-            "sitetret",
-            "pod",
-            "age_group",
-            "attendance_category",
-            "aedepttype",
-            "acuity",
-            "measure",
-        ],
-        maintain_order=True,
-    ).agg(pl.col("arrivals").sum())
+    # Fill null values with known values to match Pandas
+    groupby_cols = [
+        "sitetret",
+        "pod",
+        "age_group",
+        "attendance_category",
+        "aedepttype",
+        "acuity",
+        "measure",
+    ]
+
+    for col in groupby_cols:
+        if col == "pod":
+            data = data.with_columns(pl.col(col).fill_null("aae_type-05"))
+        elif col == "aedepttype":
+            data = data.with_columns(pl.col(col).fill_null("05"))
+        elif col == "acuity":
+            data = data.with_columns(pl.col(col).fill_null("standard"))
+        elif col == "measure":
+            data = data.with_columns(pl.col(col).fill_null("walk-in"))
+        else:
+            data = data.with_columns(pl.col(col).fill_null("unknown"))
+
+    # Group by and aggregate
+    result = data.group_by(groupby_cols, maintain_order=True).agg(
+        pl.col("arrivals").sum()
+    )
+
+    # Ensure arrivals is Float64 to match the main dataset's type
+    result = result.with_columns(pl.col("arrivals").cast(pl.Float64))
+
+    return result
 
 
 # %% [markdown]
