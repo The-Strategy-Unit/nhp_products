@@ -40,7 +40,7 @@ import os
 import resource
 import sys
 import time
-from logging import INFO
+from logging import DEBUG, INFO
 from pathlib import Path
 
 # Define a Polars-specific ProcessContext type
@@ -206,7 +206,7 @@ def _process_inpatient_results(
         output_dir: Directory to save output files
     """
     # Report memory usage at start
-    logger.info(f"Memory usage before IP processing: {get_memory_usage():.2f} MB")
+    logger.debug(f"Memory usage before IP processing: {get_memory_usage():.2f} MB")
     # Extract needed variables from ctx
     results_connection = ctx["results_connection"]
     data_connection = ctx["data_connection"]
@@ -238,7 +238,7 @@ def _process_inpatient_results(
 
     # Process all runs
     start = time.perf_counter()
-    logger.info(f"Starting IP processing with {get_memory_usage():.2f} MB memory usage")
+    logger.debug(f"Starting IP processing with {get_memory_usage():.2f} MB memory usage")
     for run in tqdm(range(1, 257), desc="IP"):
         # Load with batch functionality - this will cache surrounding runs
         df = az_pl.load_model_run_results_file(
@@ -303,7 +303,7 @@ def _process_inpatient_results(
             "measure",
         ],
     )
-    logger.info(
+    logger.debug(
         f"IP data processed into dataframe, memory usage: {get_memory_usage():.2f} MB"
     )
 
@@ -351,7 +351,7 @@ def _process_inpatient_results(
         # Clear the cache after processing
         sys.modules["az_pl"]._model_results_cache.clear()
     gc.collect()
-    logger.info(
+    logger.debug(
         f"Memory cleaned after IP processing, current usage: {get_memory_usage():.2f} MB"
     )
 
@@ -502,6 +502,98 @@ def _process_op_run(
         return False
 
 
+def _validate_op_results(
+    op_model_runs_df: pl.DataFrame, actual_results_df: pl.DataFrame
+) -> None:
+    """Validate outpatient results by comparing detailed with aggregated results.
+
+    Args:
+        op_model_runs_df: DataFrame with detailed outpatient results
+        actual_results_df: DataFrame with aggregated results
+    """
+    # Validate results - comparing detailed results with aggregated results
+    no_detailed_attendances_principal = int(
+        op_model_runs_df.filter(pl.col("measure") == "attendances")
+        .select(pl.col("mean").sum().round(1))
+        .item()
+    )
+
+    no_default_attendances_principal = int(
+        actual_results_df.filter(pl.col("measure") == "attendances")
+        .select(pl.col("mean").sum())
+        .item()
+    )
+
+    # They're not always exactly the same because of rounding
+    # Log the values for verification
+    logger.debug(f"Detailed attendances total: {no_detailed_attendances_principal:,}")
+    logger.debug(f"Default attendances total: {no_default_attendances_principal:,}")
+
+    attendance_diff = abs(
+        no_default_attendances_principal - no_detailed_attendances_principal
+    )
+    if attendance_diff > 1:
+        logger.warning(
+            f"Validation mismatch: default={no_default_attendances_principal:,}, "
+            f"detailed={no_detailed_attendances_principal:,}, "
+            f"diff={attendance_diff:,}",
+            f"({attendance_diff / no_default_attendances_principal:.1%})",
+        )
+    else:
+        logger.info(
+            "Attendance validation successful: Values match within rounding error"
+        )
+
+
+def _prepare_op_output(op_model_runs_df: pl.DataFrame) -> pl.DataFrame:
+    """Prepare outpatient results for output by filtering and formatting.
+
+    Args:
+        op_model_runs_df: Raw outpatient results dataframe
+
+    Returns:
+        Filtered and formatted dataframe ready for output
+    """
+    # Final validation step - check for rows with empty sitetret
+    empty_count = op_model_runs_df.filter(
+        pl.col("sitetret").is_null() | (pl.col("sitetret") == "")
+    ).height
+
+    if empty_count > 0:
+        logger.warning(
+            f"Found {empty_count} rows with empty sitetret before final filtering"
+        )
+
+    # Filter out any rows with null/empty sitetret - one final safety check
+    op_model_runs_df = op_model_runs_df.filter(
+        ~pl.col("sitetret").is_null() & (pl.col("sitetret") != "")
+    )
+
+    # Replace NaN values with 0.0 to match Pandas behavior
+    op_model_runs_df = op_model_runs_df.with_columns(
+        [
+            pl.col("lwr_ci").fill_nan(0.0),
+            pl.col("median").fill_nan(0.0),
+            pl.col("mean").fill_nan(0.0),
+            pl.col("upr_ci").fill_nan(0.0),
+        ]
+    )
+
+    # Log row count of final output
+    logger.info(f"Final OP output contains {op_model_runs_df.height} total rows")
+
+    # List all unique sitetret values
+    unique_sites = op_model_runs_df.select("sitetret").unique().to_series().to_list()
+    logger.debug(f"Unique sites in final output: {sorted(unique_sites)}")
+
+    # Log unique sites and row count information for diagnostics
+    unique_sites_count = op_model_runs_df.select("sitetret").unique().height
+    logger.info(f"Found {unique_sites_count} unique sites in final output")
+    logger.info(f"Final row count: {op_model_runs_df.height} rows")
+
+    return op_model_runs_df
+
+
 def _process_outpatient_results(
     context: ProcessContext,
     output_dir: str,
@@ -518,7 +610,7 @@ def _process_outpatient_results(
         output_dir: Directory to save output files
     """
     # Report memory usage at start
-    logger.info(f"Memory usage before OP processing: {get_memory_usage():.2f} MB")
+    logger.debug(f"Memory usage before OP processing: {get_memory_usage():.2f} MB")
 
     # Extract needed variables from context
     results_connection = context["results_connection"]
@@ -536,9 +628,6 @@ def _process_outpatient_results(
         data_connection, model_version_data, trust, "op", baseline_year
     ).fill_null("unknown")
 
-    # Log total number of rows in original data
-    logger.info(f"Original data contains {original_df.height} rows")
-
     # Rename 'index' column to 'rn' if it exists
     if "index" in original_df.columns:
         original_df = original_df.rename({"index": "rn"})
@@ -554,7 +643,7 @@ def _process_outpatient_results(
 
     # Process all runs
     start = time.perf_counter()
-    logger.info(f"Starting OP processing with {get_memory_usage():.2f} MB memory usage")
+    logger.debug(f"Starting OP processing with {get_memory_usage():.2f} MB memory usage")
 
     # Create params dictionary
     run_params = {
@@ -581,7 +670,7 @@ def _process_outpatient_results(
     )
 
     # Process results
-    logger.info(f"Processing model runs dictionary with {len(op_model_runs)} keys")
+    logger.debug(f"Processing model runs dictionary with {len(op_model_runs)} keys")
     op_model_runs_df = process_data_pl.process_model_runs_dict(
         op_model_runs, columns=["sitetret", "pod", "age_group", "tretspef", "measure"]
     )
@@ -590,76 +679,9 @@ def _process_outpatient_results(
     site_count = op_model_runs_df.select("sitetret").unique().height
     logger.info(f"Found {site_count} unique sites in processed results")
 
-    # Validate results - comparing detailed results with aggregated results
-    detailed_attendances_principal = int(
-        op_model_runs_df.filter(pl.col("measure") == "attendances")
-        .select(pl.col("mean").sum().round(1))
-        .item()
-    )
-
-    default_attendances_principal = int(
-        actual_results_df.filter(pl.col("measure") == "attendances")
-        .select(pl.col("mean").sum())
-        .item()
-    )
-
-    # They're not always exactly the same because of rounding
-    # Log the values for verification
-    logger.info(f"Detailed attendances total: {detailed_attendances_principal:,}")
-    logger.info(f"Default attendances total: {default_attendances_principal:,}")
-
-    attendance_diff = abs(default_attendances_principal - detailed_attendances_principal)
-    if attendance_diff > 1:
-        logger.warning(
-            f"Validation mismatch: default={default_attendances_principal:,}, "
-            f"detailed={detailed_attendances_principal:,}, "
-            f"diff={attendance_diff:,}",
-            f"({attendance_diff / default_attendances_principal:.1%})",
-        )
-    else:
-        logger.info(
-            "Attendance validation successful: Values match within rounding error"
-        )
-
-    # Final validation step - check for rows with empty sitetret
-    empty_count = op_model_runs_df.filter(
-        pl.col("sitetret").is_null() | (pl.col("sitetret") == "")
-    ).height
-
-    if empty_count > 0:
-        logger.warning(
-            f"Found {empty_count} rows with empty sitetret before final filtering"
-        )
-
-    # Filter out any rows with null/empty sitetret - one final safety check
-    op_model_runs_df = op_model_runs_df.filter(
-        ~pl.col("sitetret").is_null() & (pl.col("sitetret") != "")
-    )
-
-    # Replace NaN values with 0.0 to match Pandas behavior
-    op_model_runs_df = op_model_runs_df.with_columns(
-        [
-            pl.col("lwr_ci").fill_nan(0.0),
-            pl.col("median").fill_nan(0.0),
-            pl.col("mean").fill_nan(0.0),
-            pl.col("upr_ci").fill_nan(0.0),
-        ]
-    )
-
-    # Log total row count for validation
-    logger.info(f"Final OP dataframe has {op_model_runs_df.height} rows")
-
-    # Log row count of final output
-    logger.info(f"Final output contains {op_model_runs_df.height} total rows")
-
-    # List all unique sitetret values
-    unique_sites = op_model_runs_df.select("sitetret").unique().to_series().to_list()
-    logger.info(f"Unique sites in final output: {sorted(unique_sites)}")
-
-    # Log unique sites and row count information for diagnostics
-    unique_sites_count = op_model_runs_df.select("sitetret").unique().height
-    logger.info(f"Found {unique_sites_count} unique sites in final output")
-    logger.info(f"Final row count: {op_model_runs_df.height} rows")
+    # Validate and prepare the results
+    _validate_op_results(op_model_runs_df, actual_results_df)
+    op_model_runs_df = _prepare_op_output(op_model_runs_df)
 
     # Save results - use parameters to match Pandas to_csv behavior
     op_model_runs_df.write_csv(
@@ -679,7 +701,7 @@ def _process_outpatient_results(
         # Clear the cache after processing
         sys.modules["az_pl"]._model_results_cache.clear()
     gc.collect()
-    logger.info(
+    logger.debug(
         f"Memory cleaned after OP processing, current usage: {get_memory_usage():.2f} MB"
     )
 
@@ -738,6 +760,141 @@ def _validate_aae_metric(
 
 
 # %%
+def _prepare_aae_data(
+    data_connection: ContainerClient,
+    model_version_data: str,
+    trust: str,
+    baseline_year: int,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Load and prepare A&E data for processing.
+
+    Args:
+        data_connection: Azure container client for data
+        model_version_data: Model version to load data for
+        trust: Trust/dataset identifier
+        baseline_year: Baseline year for data
+
+    Returns:
+        Tuple of (original_df, reference_df)
+    """
+    # Load data
+    original_df = az_pl.load_data_file(
+        data_connection, model_version_data, trust, "aae", baseline_year
+    )
+
+    # Handle nulls more comprehensively like Pandas does
+    # First replace empty strings with nulls, then fill all nulls with "unknown"
+    original_df = original_df.with_columns(
+        [
+            pl.col(col).map_elements(
+                lambda x: None if x == "" else x, return_dtype=pl.Utf8
+            )
+            for col in original_df.select(pl.col(pl.Utf8)).columns
+        ]
+    ).fill_null("unknown")
+
+    # Rename 'index' column to 'rn' if it exists
+    if "index" in original_df.columns:
+        original_df = original_df.rename({"index": "rn"})
+
+    # Create reference dataframe
+    reference_df = original_df.drop(["arrivals"])
+
+    return original_df, reference_df
+
+
+def _process_aae_run(
+    run: int,
+    reference_df: pl.DataFrame,
+    base_params: dict,
+    results_connection: ContainerClient,
+    ae_model_runs: dict,
+) -> None:
+    """Process a single A&E run and update the model runs dictionary.
+
+    Args:
+        run: Run number
+        reference_df: Reference dataframe
+        base_params: Base parameters for loading model runs
+        results_connection: Azure container client for results
+        ae_model_runs: Dictionary to update with model runs
+    """
+    # Load main A&E data
+    aae_params = {**base_params, "activity_type": "aae", "run_number": run}
+    df = az_pl.load_model_run_results_file(
+        container_client=results_connection, params=aae_params
+    )
+
+    assert len(df) == len(reference_df)
+
+    # Process main A&E data - use left join to better match Pandas behavior with nulls
+    merged = reference_df.join(df, on="rn", how="left")
+    merged = merged.with_columns(pl.col("arrivals").fill_null(0))
+    results = process_data_pl.process_aae_results(merged)
+
+    # Load and process conversion data
+    conv_params = {**base_params, "activity_type": "sdec_conversion", "run_number": run}
+    df_conv = az_pl.load_model_run_results_file(
+        container_client=results_connection, params=conv_params
+    )
+
+    # Process SDEC conversion data and combine with main results
+    sdec_results = process_data_pl.process_aae_converted_from_ip(df_conv)
+    results = process_data_pl.combine_converted_with_main_results(sdec_results, results)
+
+    # Define columns for model runs dictionary
+    cols = [
+        "sitetret",
+        "pod",
+        "age_group",
+        "attendance_category",
+        "aedepttype",
+        "acuity",
+        "measure",
+    ]
+
+    # Build model runs dictionary
+    for row in results.iter_rows(named=True):
+        # Convert None/null to empty string in keys to match Pandas behavior
+        k = tuple("" if row[col] is None else row[col] for col in cols)
+
+        # Skip rows where all keys are empty strings - Pandas implicitly filters these
+        if k != tuple("" for _ in cols):
+            ae_model_runs.setdefault(k, []).append(row["arrivals"])
+
+
+def _verify_aae_output(ae_model_runs_df: pl.DataFrame) -> None:
+    """Verify that the A&E output dataframe has the expected structure.
+
+    Args:
+        ae_model_runs_df: Dataframe to verify
+    """
+    # Verify output has expected structure
+    expected_cols = [
+        "sitetret",
+        "pod",
+        "age_group",
+        "attendance_category",
+        "aedepttype",
+        "acuity",
+        "measure",
+        "lwr_ci",
+        "median",
+        "mean",
+        "upr_ci",
+    ]
+    for col in expected_cols:
+        if col not in ae_model_runs_df.columns:
+            logger.warning(f"Expected column {col} missing in A&E results dataframe")
+
+    # Verify no empty sitetret values
+    empty_rows = ae_model_runs_df.filter(
+        (pl.col("sitetret").is_null()) | (pl.col("sitetret") == "")
+    ).height
+    if empty_rows > 0:
+        logger.warning(f"Found {empty_rows} rows with empty sitetret values")
+
+
 def _process_aae_results(
     context: ProcessContext,
     output_dir: str,
@@ -768,30 +925,12 @@ def _process_aae_results(
     actual_results_df = context["actual_results_df"]
 
     # Load and prepare data
-    original_df = az_pl.load_data_file(
-        data_connection, model_version_data, trust, "aae", baseline_year
+    original_df, reference_df = _prepare_aae_data(
+        data_connection, model_version_data, trust, baseline_year
     )
 
-    # Handle nulls more comprehensively like Pandas does
-    # First replace empty strings with nulls, then fill all nulls with "unknown"
-    original_df = original_df.with_columns(
-        [
-            pl.col(col).map_elements(
-                lambda x: None if x == "" else x, return_dtype=pl.Utf8
-            )
-            for col in original_df.select(pl.col(pl.Utf8)).columns
-        ]
-    ).fill_null("unknown")
-
-    # Rename 'index' column to 'rn' if it exists
-    if "index" in original_df.columns:
-        original_df = original_df.rename({"index": "rn"})
-
-    # Pre-allocate dictionary and create reference dataframe
+    # Pre-allocate dictionary and set batch size
     ae_model_runs = {}
-    reference_df = original_df.drop(["arrivals"])
-
-    # Process settings
     batch_size = 30  # Balance between memory usage and I/O performance
 
     # Process all runs
@@ -807,61 +946,11 @@ def _process_aae_results(
         "batch_size": batch_size,
     }
 
+    # Process all runs
     for run in tqdm(range(1, 257), desc="A&E"):
-        # Load main A&E data
-        aae_params = {**base_params, "activity_type": "aae", "run_number": run}
-        df = az_pl.load_model_run_results_file(
-            container_client=results_connection, params=aae_params
+        _process_aae_run(
+            run, reference_df, base_params, results_connection, ae_model_runs
         )
-
-        assert len(df) == len(original_df)
-
-        # Process main A&E data
-        # Use left join instead of inner join to better match Pandas behavior with nulls
-        merged = reference_df.join(df, on="rn", how="left")
-
-        # Fill any null values in arrivals column to match Pandas behavior
-        merged = merged.with_columns(pl.col("arrivals").fill_null(0))
-
-        results = process_data_pl.process_aae_results(merged)
-
-        # Load and process conversion data
-        conv_params = {
-            **base_params,
-            "activity_type": "sdec_conversion",
-            "run_number": run,
-        }
-        df_conv = az_pl.load_model_run_results_file(
-            container_client=results_connection, params=conv_params
-        )
-
-        # Process SDEC conversion data - critical for aae_type-05 rows
-        sdec_results = process_data_pl.process_aae_converted_from_ip(df_conv)
-
-        # Combine SDEC results with main results
-        # This exact handling is critical for matching Pandas behavior
-        results = process_data_pl.combine_converted_with_main_results(
-            sdec_results, results
-        )
-
-        # Build model runs dictionary
-        for row in results.iter_rows(named=True):
-            # Ensure columns order matches process_model_runs_dict
-            cols = [
-                "sitetret",
-                "pod",
-                "age_group",
-                "attendance_category",
-                "aedepttype",
-                "acuity",
-                "measure",
-            ]
-            # Convert None/null to empty string in keys to match Pandas behavior
-            k = tuple("" if row[col] is None else row[col] for col in cols)
-
-            # Skip rows where all keys are empty strings - Pandas implicitly filters these
-            if k != tuple("" for _ in cols):
-                ae_model_runs.setdefault(k, []).append(row["arrivals"])
 
     end = time.perf_counter()
     logger.info(
@@ -870,25 +959,7 @@ def _process_aae_results(
     )
 
     # Process results
-    ae_model_runs_df = process_data_pl.process_model_runs_dict(
-        ae_model_runs,
-        columns=[
-            "sitetret",
-            "pod",
-            "age_group",
-            "attendance_category",
-            "aedepttype",
-            "acuity",
-            "measure",
-        ],
-    )
-
-    # Validate results
-    _validate_aae_metric(ae_model_runs_df, actual_results_df, "ambulance", "Ambulance")
-    _validate_aae_metric(ae_model_runs_df, actual_results_df, "walk-in", "Walk-in")
-
-    # Verify output has expected structure
-    expected_cols = [
+    columns = [
         "sitetret",
         "pod",
         "age_group",
@@ -896,21 +967,15 @@ def _process_aae_results(
         "aedepttype",
         "acuity",
         "measure",
-        "lwr_ci",
-        "median",
-        "mean",
-        "upr_ci",
     ]
-    for col in expected_cols:
-        if col not in ae_model_runs_df.columns:
-            logger.warning(f"Expected column {col} missing in A&E results dataframe")
+    ae_model_runs_df = process_data_pl.process_model_runs_dict(
+        ae_model_runs, columns=columns
+    )
 
-    # Verify no empty sitetret values
-    empty_rows = ae_model_runs_df.filter(
-        (pl.col("sitetret").is_null()) | (pl.col("sitetret") == "")
-    ).height
-    if empty_rows > 0:
-        logger.warning(f"Found {empty_rows} rows with empty sitetret values")
+    # Validate and verify results
+    _validate_aae_metric(ae_model_runs_df, actual_results_df, "ambulance", "Ambulance")
+    _validate_aae_metric(ae_model_runs_df, actual_results_df, "walk-in", "Walk-in")
+    _verify_aae_output(ae_model_runs_df)
 
     # Save results
     ae_model_runs_df.write_csv(f"{output_dir}/{scenario_name}_detailed_ae_results.csv")
@@ -939,32 +1004,36 @@ def _process_aae_results(
 
 
 # %%
+class ProcessConfig(TypedDict, total=False):
+    """Configuration options for detailed results processing."""
+
+    account_url: str | None
+    results_container: str | None
+    data_container: str | None
+    process_ip_only: bool
+    process_op_only: bool
+    process_ae_only: bool
+
+
+# %%
 def run_detailed_results(
     results_path: str,
     output_dir: str | None = None,
-    account_url: str | None = None,
-    results_container: str | None = None,
-    data_container: str | None = None,
-    process_ip_only: bool = False,
-    process_op_only: bool = False,
-    process_ae_only: bool = False,
+    config: ProcessConfig = {},
 ) -> dict[str, str]:
     """Generate detailed results for a model scenario using Polars.
 
     Takes an existing scenario results path and produces detailed aggregations
     of IP, OP, and A&E model results in CSV and Parquet formats. By default,
-    processes all result types. If any of the process_*_only flags are set,
+    processes all result types. If any of the process_*_only flags are set in config,
     only that specific type will be processed.
 
     Args:
         results_path: Path to existing aggregated results
         output_dir: Directory to save output files (default: 'nhpy/data')
-        account_url: Azure Storage account URL (default: from environment)
-        results_container: Azure Storage container for results (default: from environment)
-        data_container: Azure Storage container for data (default: from environment)
-        process_ip_only: Flag to process only inpatient results (default: False)
-        process_op_only: Flag to process only outpatient results (default: False)
-        process_ae_only: Flag to process only A&E results (default: False)
+        config: Processing configuration (default: None, use defaults)
+            Can contain: account_url, results_container, data_container,
+            process_ip_only, process_op_only, process_ae_only
 
     Returns:
         dict[str, str]: dictionary containing paths to output files
@@ -975,13 +1044,23 @@ def run_detailed_results(
         FileNotFoundError: If results folder or data version not found
         Various Azure exceptions: For authentication, network, or permission issues
     """
+    # Use default config if none provided
+    if config is {}:
+        config = {
+            "results_container": "./nhpy/data/pl",
+            "process_ip_only": False,
+            "process_op_only": False,
+            "process_ae_only": False,
+        }
     # Start the total timing
     total_start_time = time.perf_counter()
 
     # Load environment variables if not provided
-    account_url = account_url or os.getenv("AZ_STORAGE_EP", "")
-    results_container = results_container or os.getenv("AZ_STORAGE_RESULTS", "")
-    data_container = data_container or os.getenv("AZ_STORAGE_DATA", "")
+    account_url = config.get("account_url") or os.getenv("AZ_STORAGE_EP", "")
+    results_container = config.get("results_container") or os.getenv(
+        "AZ_STORAGE_RESULTS", ""
+    )
+    data_container = config.get("data_container") or os.getenv("AZ_STORAGE_DATA", "")
 
     if not all([account_url, results_container, data_container]):
         missing = []
@@ -1013,6 +1092,9 @@ def run_detailed_results(
     )
 
     # Determine which processes to run
+    process_ip_only = config.get("process_ip_only", False)
+    process_op_only = config.get("process_op_only", False)
+    process_ae_only = config.get("process_ae_only", False)
     run_all = not any([process_ip_only, process_op_only, process_ae_only])
     scenario_name = context["scenario_name"]
     result_files = {}
@@ -1108,15 +1190,20 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
+        # Create config dictionary from command line arguments
+        config = {
+            "account_url": args.account_url,
+            "results_container": args.results_container,
+            "data_container": args.data_container,
+            "process_ip_only": args.ip,
+            "process_op_only": args.op,
+            "process_ae_only": args.ae,
+        }
+
         run_detailed_results(
             results_path=args.results_path,
             output_dir=args.output_dir,
-            account_url=args.account_url,
-            results_container=args.results_container,
-            data_container=args.data_container,
-            process_ip_only=args.ip,
-            process_op_only=args.op,
-            process_ae_only=args.ae,
+            config=config,
         )
 
         logger.info("🎉 Detailed results generated successfully!")
