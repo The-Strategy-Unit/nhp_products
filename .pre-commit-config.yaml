@@ -15,7 +15,7 @@ repos:
       - id: ruff-format
         files: \.py$
         exclude: ^(tests).*$
-        stages: [commit]
+        stages: [pre-commit]
   - repo: https://github.com/kynan/nbstripout
     rev: 0.8.1
     hooks:

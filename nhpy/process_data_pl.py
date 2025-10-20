@@ -692,33 +692,17 @@ def process_aae_results(data: pl.DataFrame) -> pl.DataFrame:
 
 
 # %%
-def process_aae_converted_from_ip(data: pl.DataFrame) -> pl.DataFrame:
-    """Process the A&E SDEC activity converted from IP, adding pod and age_group,
-    and grouping by sitetret, age_group, pod, aedepttype, attendance_category, acuity
-    and measure.
+def _prepare_aae_columns(data: pl.DataFrame) -> pl.DataFrame:
+    """Helper function to prepare columns for A&E SDEC data converted from IP.
+
+    Adds required columns and handles null values consistently.
 
     Args:
-        data: the A&E SDEC activity converted from IP in each Monte Carlo simulation
+        data: DataFrame to prepare
 
     Returns:
-        The processed and aggregated data
+        DataFrame with required columns added
     """
-    # Skip processing if the data is empty
-    if len(data) == 0:
-        # Return empty DataFrame with required structure
-        return pl.DataFrame(
-            {
-                "sitetret": [],
-                "pod": [],
-                "age_group": [],
-                "attendance_category": [],
-                "aedepttype": [],
-                "acuity": [],
-                "measure": [],
-                "arrivals": [],
-            }
-        )
-
     # Create required columns if they don't exist
     cols_to_add = []
 
@@ -759,6 +743,47 @@ def process_aae_converted_from_ip(data: pl.DataFrame) -> pl.DataFrame:
     if "arrivals" not in data.columns:
         data = data.with_columns(pl.lit(1).alias("arrivals"))
 
+    return data
+
+
+def process_aae_converted_from_ip(data: pl.DataFrame) -> pl.DataFrame:
+    """Process the A&E SDEC activity converted from IP, adding pod and age_group,
+    and grouping by sitetret, age_group, pod, aedepttype, attendance_category, acuity
+    and measure.
+
+    Args:
+        data: the A&E SDEC activity converted from IP in each Monte Carlo simulation
+
+    Returns:
+        The processed and aggregated data
+    """
+    # Skip processing if the data is empty
+    if len(data) == 0:
+        # Return empty DataFrame with required structure
+        return pl.DataFrame(
+            {
+                "sitetret": [],
+                "pod": [],
+                "age_group": [],
+                "attendance_category": [],
+                "aedepttype": [],
+                "acuity": [],
+                "measure": [],
+                "arrivals": [],
+            }
+        )
+
+    # Prepare columns using helper function
+    data = _prepare_aae_columns(data)
+
+    # Define column values for null replacements
+    null_replacements = {
+        "pod": "aae_type-05",
+        "aedepttype": "05",
+        "acuity": "standard",
+        "measure": "walk-in",
+    }
+
     # Fill null values with known values to match Pandas
     groupby_cols = [
         "sitetret",
@@ -770,17 +795,12 @@ def process_aae_converted_from_ip(data: pl.DataFrame) -> pl.DataFrame:
         "measure",
     ]
 
-    for col in groupby_cols:
-        if col == "pod":
-            data = data.with_columns(pl.col(col).fill_null("aae_type-05"))
-        elif col == "aedepttype":
-            data = data.with_columns(pl.col(col).fill_null("05"))
-        elif col == "acuity":
-            data = data.with_columns(pl.col(col).fill_null("standard"))
-        elif col == "measure":
-            data = data.with_columns(pl.col(col).fill_null("walk-in"))
-        else:
-            data = data.with_columns(pl.col(col).fill_null("unknown"))
+    # Fill all nulls in a single operation by constructing expressions
+    fill_exprs = [
+        pl.col(col).fill_null(null_replacements.get(col, "unknown")).alias(col)
+        for col in groupby_cols
+    ]
+    data = data.with_columns(fill_exprs)
 
     # Group by and aggregate
     result = data.group_by(groupby_cols, maintain_order=True).agg(
