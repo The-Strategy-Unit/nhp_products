@@ -614,7 +614,7 @@ def _process_outpatient_results(
             f"Validation mismatch: default={default_attendances_principal:,}, "
             f"detailed={detailed_attendances_principal:,}, "
             f"diff={attendance_diff:,}",
-            f"({attendance_diff/default_attendances_principal:.1%})"
+            f"({attendance_diff / default_attendances_principal:.1%})",
         )
     else:
         logger.info(
