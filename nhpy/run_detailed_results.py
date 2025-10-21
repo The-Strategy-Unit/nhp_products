@@ -80,9 +80,10 @@ def get_memory_usage():
 project_name = os.path.basename(os.path.dirname(os.path.abspath(__name__)))
 config_env_path = os.path.expanduser(f"~/.config/{project_name}/.env")
 if os.path.exists(config_env_path):
-    load_dotenv(config_env_path)
+    # Use interpolate=False to avoid warnings with complex values in .env file
+    load_dotenv(config_env_path, interpolate=False)
 else:
-    load_dotenv()
+    load_dotenv(interpolate=False)
 
 
 def _initialize_connections_and_params(

@@ -115,9 +115,10 @@ def get_memory_usage():
 project_name = Path(__name__).resolve().parent.name
 config_env_path = Path(f"~/.config/{project_name}/.env").expanduser()
 if config_env_path.exists():
-    load_dotenv(str(config_env_path))
+    # Use interpolate=False to avoid warnings with complex values in .env file
+    load_dotenv(str(config_env_path), interpolate=False)
 else:
-    load_dotenv()
+    load_dotenv(interpolate=False)
 
 # %% [markdown]
 # ## Connection and Parameter Initialisation
