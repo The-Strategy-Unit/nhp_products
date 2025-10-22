@@ -125,7 +125,7 @@ else:
 
 
 # %%
-def _initialize_connections_and_params(
+def _initialise_connections_and_params(
     results_path: str,
     account_url: str,
     results_container: str,
@@ -192,6 +192,29 @@ def _initialize_connections_and_params(
 
 
 # %%
+def _check_results_exist(output_dir: str, scenario_name: str, activity_type: str) -> bool:
+    """Check if results files for a specific activity type already exist.
+
+    Args:
+        output_dir: Directory where output files are stored
+        scenario_name: Name of the scenario
+        activity_type: Type of activity (ip, op, ae)
+
+    Returns:
+        bool: True if both CSV and Parquet files exist, False otherwise
+    """
+    results_base = f"{output_dir}/{scenario_name}_detailed_{activity_type}_results"
+    csv_path = Path(f"{results_base}.csv")
+    parquet_path = Path(f"{results_base}.parquet")
+
+    if csv_path.exists() and parquet_path.exists():
+        logger.info(f"Found existing {activity_type.upper()} results files:")
+        logger.info(f"  - {csv_path}")
+        logger.info(f"  - {parquet_path}")
+        return True
+    return False
+
+
 def _process_inpatient_results(
     ctx: ProcessContext,
     output_dir: str,
@@ -206,6 +229,14 @@ def _process_inpatient_results(
         ctx: dictionary with connections and parameters
         output_dir: Directory to save output files
     """
+    # Extract scenario name first for file existence check
+    scenario_name = ctx["scenario_name"]
+
+    # Check if output files already exist
+    if _check_results_exist(output_dir, scenario_name, "ip"):
+        logger.info("Skipping IP processing as results already exist")
+        return
+
     # Report memory usage at start
     logger.debug(f"Memory usage before IP processing: {get_memory_usage():.2f} MB")
     # Extract needed variables from ctx
@@ -215,7 +246,6 @@ def _process_inpatient_results(
     model_version_data = ctx["model_version_data"]
     trust = ctx["trust"]
     baseline_year = ctx["baseline_year"]
-    scenario_name = ctx["scenario_name"]
     run_id = ctx["run_id"]
     actual_results_df = ctx["actual_results_df"]
 
@@ -610,6 +640,14 @@ def _process_outpatient_results(
         context: dictionary with connections and parameters
         output_dir: Directory to save output files
     """
+    # Extract scenario name first for file existence check
+    scenario_name = context["scenario_name"]
+
+    # Check if output files already exist
+    if _check_results_exist(output_dir, scenario_name, "op"):
+        logger.info("Skipping OP processing as results already exist")
+        return
+
     # Report memory usage at start
     logger.debug(f"Memory usage before OP processing: {get_memory_usage():.2f} MB")
 
@@ -620,7 +658,6 @@ def _process_outpatient_results(
     model_version_data = context["model_version_data"]
     trust = context["trust"]
     baseline_year = context["baseline_year"]
-    scenario_name = context["scenario_name"]
     run_id = context["run_id"]
     actual_results_df = context["actual_results_df"]
 
@@ -911,6 +948,14 @@ def _process_aae_results(
         context: dictionary with connections and parameters
         output_dir: Directory to save output files
     """
+    # Extract scenario name first for file existence check
+    scenario_name = context["scenario_name"]
+
+    # Check if output files already exist
+    if _check_results_exist(output_dir, scenario_name, "ae"):
+        logger.info("Skipping A&E processing as results already exist")
+        return
+
     # Report memory usage at start
     logger.info(f"Memory usage before A&E processing: {get_memory_usage():.2f} MB")
 
@@ -921,7 +966,6 @@ def _process_aae_results(
     model_version_data = context["model_version_data"]
     trust = context["trust"]
     baseline_year = context["baseline_year"]
-    scenario_name = context["scenario_name"]
     run_id = context["run_id"]
     actual_results_df = context["actual_results_df"]
 
@@ -1029,6 +1073,8 @@ def run_detailed_results(
     processes all result types. If any of the process_*_only flags are set in config,
     only that specific type will be processed.
 
+    If results already exist for any activity type, those processing steps are skipped.
+
     Args:
         results_path: Path to existing aggregated results
         output_dir: Directory to save output files (default: 'nhpy/data')
@@ -1085,7 +1131,7 @@ def run_detailed_results(
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Initialise connections and load parameters
-    context = _initialize_connections_and_params(
+    context = _initialise_connections_and_params(
         results_path,
         account_url,
         results_container,
@@ -1100,44 +1146,67 @@ def run_detailed_results(
     scenario_name = context["scenario_name"]
     result_files = {}
 
-    # Process each type of results based on flags
-    if run_all or process_ip_only:
+    # Check for existing result files
+    ip_exists = _check_results_exist(output_dir, scenario_name, "ip")
+    op_exists = _check_results_exist(output_dir, scenario_name, "op")
+    ae_exists = _check_results_exist(output_dir, scenario_name, "ae")
+
+    # Track if we processed any new results
+    processed_new_results = False
+
+    # Process each type of results based on flags and existence
+    if (run_all or process_ip_only) and not ip_exists:
         logger.info("Processing inpatient results...")
         _process_inpatient_results(context, output_dir)
-        result_files.update(
-            {
-                "ip_csv": f"{output_dir}/{scenario_name}_detailed_ip_results.csv",
-                "ip_parquet": f"{output_dir}/{scenario_name}_detailed_ip_results.parquet",
-            }
-        )
+        processed_new_results = True
+    elif process_ip_only and ip_exists:
+        logger.info("IP results already exist. No processing needed.")
 
-    if run_all or process_op_only:
+    # Always add paths to result_files, regardless of whether we processed them or not
+    result_files.update(
+        {
+            "ip_csv": f"{output_dir}/{scenario_name}_detailed_ip_results.csv",
+            "ip_parquet": f"{output_dir}/{scenario_name}_detailed_ip_results.parquet",
+        }
+    )
+
+    if (run_all or process_op_only) and not op_exists:
         logger.info("Processing outpatient results...")
         _process_outpatient_results(context, output_dir)
-        result_files.update(
-            {
-                "op_csv": f"{output_dir}/{scenario_name}_detailed_op_results.csv",
-                "op_parquet": f"{output_dir}/{scenario_name}_detailed_op_results.parquet",
-            }
-        )
+        processed_new_results = True
+    elif process_op_only and op_exists:
+        logger.info("OP results already exist. No processing needed.")
 
-    if run_all or process_ae_only:
+    result_files.update(
+        {
+            "op_csv": f"{output_dir}/{scenario_name}_detailed_op_results.csv",
+            "op_parquet": f"{output_dir}/{scenario_name}_detailed_op_results.parquet",
+        }
+    )
+
+    if (run_all or process_ae_only) and not ae_exists:
         logger.info("Processing A&E results...")
         _process_aae_results(context, output_dir)
-        result_files.update(
-            {
-                "ae_csv": f"{output_dir}/{scenario_name}_detailed_ae_results.csv",
-                "ae_parquet": f"{output_dir}/{scenario_name}_detailed_ae_results.parquet",
-            }
-        )
+        processed_new_results = True
+    elif process_ae_only and ae_exists:
+        logger.info("A&E results already exist. No processing needed.")
 
-    # Calculate and report the total time
-    total_end_time = time.perf_counter()
-    total_duration = total_end_time - total_start_time
-    minutes, seconds = divmod(total_duration, 60)
-    logger.info(
-        f"Total processing time for Polars implementation: {int(minutes)}m {seconds:.2f}s"
+    result_files.update(
+        {
+            "ae_csv": f"{output_dir}/{scenario_name}_detailed_ae_results.csv",
+            "ae_parquet": f"{output_dir}/{scenario_name}_detailed_ae_results.parquet",
+        }
     )
+
+    if processed_new_results:
+        # Calculate and report the total time only if we did some work
+        total_end_time = time.perf_counter()
+        total_duration = total_end_time - total_start_time
+        minutes, seconds = divmod(total_duration, 60)
+        time_str = f"{int(minutes)}m {seconds:.2f}s"
+        logger.info(f"Total processing time for Polars implementation: {time_str}")
+    else:
+        logger.info("All requested results already exist. No processing needed.")
 
     # Return paths to output files
     return result_files
@@ -1191,6 +1260,38 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
+        # First, check if specific result type was requested
+        if args.ip or args.op or args.ae:
+            # Get output directory and scenario name first
+            output_dir = args.output_dir
+
+            # We need to set up the output directory
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+            # Initialize connections to get scenario name
+            account_url = args.account_url or os.getenv("AZ_STORAGE_EP", "")
+            results_container = args.results_container or os.getenv(
+                "AZ_STORAGE_RESULTS", ""
+            )
+            data_container = args.data_container or os.getenv("AZ_STORAGE_DATA", "")
+
+            # Initialise context just to get scenario name
+            context = _initialise_connections_and_params(
+                args.results_path, account_url, results_container, data_container
+            )
+            scenario_name = context["scenario_name"]
+
+            # Check for existing files for the requested type
+            activity_type = "ip" if args.ip else "op" if args.op else "ae"
+            if _check_results_exist(output_dir, scenario_name, activity_type):
+                file_prefix = f"{scenario_name}_detailed_{activity_type}_results"
+                results_base = f"{output_dir}/{file_prefix}"
+                logger.info(f"Results already available for {activity_type.upper()}")
+                logger.info(f"Paths:")
+                logger.info(f"  - {results_base}.csv")
+                logger.info(f"  - {results_base}.parquet")
+                return ExitCodes.SUCCESS_CODE
+
         # Create config dictionary from command line arguments
         config = {
             "account_url": args.account_url,
@@ -1201,7 +1302,9 @@ def main() -> int:
             "process_ae_only": args.ae,
         }
 
-        run_detailed_results(
+        # If we're here, either no specific type was requested or files don't exist yet
+        # Run detailed results generation
+        result_files = run_detailed_results(
             results_path=args.results_path,
             output_dir=args.output_dir,
             config=config,
@@ -1209,6 +1312,18 @@ def main() -> int:
 
         logger.info("🎉 Detailed results generated successfully!")
         logger.info("Results saved to: %s/", args.output_dir)
+
+        # List specific files based on what was requested
+        if args.ip:
+            logger.info(f"IP results: {result_files['ip_csv']}")
+        elif args.op:
+            logger.info(f"OP results: {result_files['op_csv']}")
+        elif args.ae:
+            logger.info(f"A&E results: {result_files['ae_csv']}")
+        else:
+            logger.info(f"Files generated: {len(result_files)}")
+
+        return ExitCodes.SUCCESS_CODE
     except (
         ValueError,
         EnvironmentVariableError,
@@ -1223,9 +1338,6 @@ def main() -> int:
     except KeyboardInterrupt:
         logger.info("Operation cancelled by user")
         return ExitCodes.SIGINT_CODE
-    else:
-        # If we got here, it means no exceptions were raised
-        return ExitCodes.SUCCESS_CODE
 
 
 # %%
