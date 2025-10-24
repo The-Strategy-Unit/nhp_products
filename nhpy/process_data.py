@@ -100,9 +100,11 @@ def process_ip_activity_avoided(data: pd.DataFrame) -> pd.DataFrame:
         },
     )
     data = process_ip_results(data, los_groups_aa)
-    data = data.groupby(["sushrg", "los_group", "pod"], dropna=False)[
+    # Explicitly cast the result to DataFrame to satisfy type checking
+    grouped_data = data.groupby(["sushrg", "los_group", "pod"], dropna=False)[
         ["admissions", "beddays", "procedures"]
     ].sum()
+    data = pd.DataFrame(grouped_data)
 
     # handle the outpatients rows
     data.loc[
@@ -187,7 +189,8 @@ def process_ip_detailed_results(data: pd.DataFrame) -> pd.DataFrame:
         },
     )
     data = process_ip_results(data, los_groups_detailed)
-    data = data.groupby(
+    # Explicitly cast the result to DataFrame to satisfy type checking
+    grouped_data = data.groupby(
         [
             "sitetret",
             "age_group",
@@ -199,6 +202,7 @@ def process_ip_detailed_results(data: pd.DataFrame) -> pd.DataFrame:
         ],
         dropna=False,
     )[["admissions", "beddays", "procedures"]].sum()
+    data = pd.DataFrame(grouped_data)
 
     # handle the outpatients rows
     data.loc[
@@ -240,7 +244,8 @@ def process_op_detailed_results(data: pd.DataFrame) -> pd.DataFrame:
 
     # From aggregate
     measures = data.melt(["rn"], ["attendances", "tele_attendances"], "measure")
-    data = (
+    # Explicitly cast the result to DataFrame to satisfy type checking
+    grouped_data = (
         data.drop(["attendances", "tele_attendances"], axis="columns")
         .merge(measures, on="rn")
         .groupby(
@@ -249,6 +254,7 @@ def process_op_detailed_results(data: pd.DataFrame) -> pd.DataFrame:
         .sum()
         .sort_index()
     )
+    data = pd.DataFrame(grouped_data)
     return data
 
 
@@ -273,8 +279,6 @@ def process_op_converted_from_ip(data: pd.DataFrame) -> pd.Series:
         .groupby(["sitetret", "pod", "age_group", "tretspef", "measure"])["value"]
         .sum()
     )
-
-    return data
 
 
 def combine_converted_with_main_results(
@@ -320,7 +324,8 @@ def process_aae_results(data: pd.DataFrame) -> pd.DataFrame:
     data["measure"] = "walk-in"
     data.loc[data["is_ambulance"], "measure"] = "ambulance"
 
-    return data.groupby(
+    # Explicitly cast the result to DataFrame to satisfy type checking
+    grouped_data = data.groupby(
         [
             "sitetret",
             "pod",
@@ -331,6 +336,7 @@ def process_aae_results(data: pd.DataFrame) -> pd.DataFrame:
             "measure",
         ]
     )[["arrivals"]].sum()
+    return pd.DataFrame(grouped_data)
 
 
 def process_aae_converted_from_ip(data: pd.DataFrame) -> pd.Series:
@@ -349,7 +355,8 @@ def process_aae_converted_from_ip(data: pd.DataFrame) -> pd.Series:
     data["pod"] = "aae_type-05"
     data["age_group"] = age_groups(data["age"])
     data = data.rename(columns={"group": "measure"})
-    data = data.groupby(
+    # Group the data and return a Series
+    result_series = data.groupby(
         [
             "sitetret",
             "pod",
@@ -361,7 +368,7 @@ def process_aae_converted_from_ip(data: pd.DataFrame) -> pd.Series:
         ]
     )["arrivals"].sum()
 
-    return data
+    return result_series
 
 
 def add_pod_to_data_op(data):
