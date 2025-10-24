@@ -1061,6 +1061,115 @@ class ProcessConfig(TypedDict, total=False):
 
 
 # %%
+def _validate_environment_variables(config: ProcessConfig) -> tuple[str, str, str]:
+    """Validate environment variables and return necessary connection strings.
+
+    Args:
+        config: Processing configuration
+
+    Returns:
+        tuple: (account_url, results_container, data_container)
+
+    Raises:
+        EnvironmentVariableError: If required environment variables are missing
+    """
+    account_url = config.get("account_url") or os.getenv("AZ_STORAGE_EP", "")
+    results_container = config.get("results_container") or os.getenv(
+        "AZ_STORAGE_RESULTS", ""
+    )
+    data_container = config.get("data_container") or os.getenv("AZ_STORAGE_DATA", "")
+
+    if not all([account_url, results_container, data_container]):
+        missing = []
+        if not account_url:
+            missing.append("AZ_STORAGE_EP")
+        if not results_container:
+            missing.append("AZ_STORAGE_RESULTS")
+        if not data_container:
+            missing.append("AZ_STORAGE_DATA")
+        raise EnvironmentVariableError(
+            missing_vars=missing,
+            message=f"Missing environment variables: {', '.join(missing)}",
+        )
+
+    return account_url, results_container, data_container
+
+
+def _get_result_file_paths(output_dir: str, scenario_name: str) -> dict[str, str]:
+    """Generate paths for all result files.
+
+    Args:
+        output_dir: Directory to save output files
+        scenario_name: Name of the scenario
+
+    Returns:
+        dict: Dictionary with paths to all result files
+    """
+    result_files = {}
+
+    # IP file paths
+    result_files.update(
+        {
+            "ip_csv": f"{output_dir}/{scenario_name}_detailed_ip_results.csv",
+            "ip_parquet": f"{output_dir}/{scenario_name}_detailed_ip_results.parquet",
+        }
+    )
+
+    # OP file paths
+    result_files.update(
+        {
+            "op_csv": f"{output_dir}/{scenario_name}_detailed_op_results.csv",
+            "op_parquet": f"{output_dir}/{scenario_name}_detailed_op_results.parquet",
+        }
+    )
+
+    # A&E file paths
+    result_files.update(
+        {
+            "ae_csv": f"{output_dir}/{scenario_name}_detailed_ae_results.csv",
+            "ae_parquet": f"{output_dir}/{scenario_name}_detailed_ae_results.parquet",
+        }
+    )
+
+    return result_files
+
+
+def _process_activity_type(
+    context: ProcessContext,
+    output_dir: str,
+    activity_type: str,
+    should_process: bool,
+    exists: bool,
+) -> bool:
+    """Process a specific activity type if needed.
+
+    Args:
+        context: Processing context
+        output_dir: Directory to save output files
+        activity_type: Type of activity to process (ip, op, ae)
+        should_process: Whether this activity type should be processed
+        exists: Whether results for this activity already exist
+
+    Returns:
+        bool: True if new results were processed, False otherwise
+    """
+    if should_process and not exists:
+        logger.info(f"Processing {activity_type} results...")
+        if activity_type == "ip":
+            _process_inpatient_results(context, output_dir)
+        elif activity_type == "op":
+            _process_outpatient_results(context, output_dir)
+        elif activity_type == "ae":
+            _process_aae_results(context, output_dir)
+        return True
+    elif should_process and exists:
+        logger.info(
+            f"{activity_type.upper()} results already exist. No processing needed."
+        )
+    return False
+
+
+# %%
 def run_detailed_results(
     results_path: str,
     output_dir: str | None = None,
@@ -1102,25 +1211,10 @@ def run_detailed_results(
     # Start the total timing
     total_start_time = time.perf_counter()
 
-    # Load environment variables if not provided
-    account_url = config.get("account_url") or os.getenv("AZ_STORAGE_EP", "")
-    results_container = config.get("results_container") or os.getenv(
-        "AZ_STORAGE_RESULTS", ""
+    # Validate environment variables and get connection strings
+    account_url, results_container, data_container = _validate_environment_variables(
+        config
     )
-    data_container = config.get("data_container") or os.getenv("AZ_STORAGE_DATA", "")
-
-    if not all([account_url, results_container, data_container]):
-        missing = []
-        if not account_url:
-            missing.append("AZ_STORAGE_EP")
-        if not results_container:
-            missing.append("AZ_STORAGE_RESULTS")
-        if not data_container:
-            missing.append("AZ_STORAGE_DATA")
-        raise EnvironmentVariableError(
-            missing_vars=missing,
-            message=f"Missing environment variables: {', '.join(missing)}",
-        )
 
     # Set up output directory
     if output_dir is None:
@@ -1144,60 +1238,32 @@ def run_detailed_results(
     process_ae_only = config.get("process_ae_only", False)
     run_all = not any([process_ip_only, process_op_only, process_ae_only])
     scenario_name = context["scenario_name"]
-    result_files = {}
 
     # Check for existing result files
     ip_exists = _check_results_exist(output_dir, scenario_name, "ip")
     op_exists = _check_results_exist(output_dir, scenario_name, "op")
     ae_exists = _check_results_exist(output_dir, scenario_name, "ae")
 
-    # Track if we processed any new results
-    processed_new_results = False
-
-    # Process each type of results based on flags and existence
-    if (run_all or process_ip_only) and not ip_exists:
-        logger.info("Processing inpatient results...")
-        _process_inpatient_results(context, output_dir)
-        processed_new_results = True
-    elif process_ip_only and ip_exists:
-        logger.info("IP results already exist. No processing needed.")
-
-    # Always add paths to result_files, regardless of whether we processed them or not
-    result_files.update(
-        {
-            "ip_csv": f"{output_dir}/{scenario_name}_detailed_ip_results.csv",
-            "ip_parquet": f"{output_dir}/{scenario_name}_detailed_ip_results.parquet",
-        }
+    # Process each activity type
+    processed_ip = _process_activity_type(
+        context, output_dir, "ip", run_all or process_ip_only, ip_exists
     )
 
-    if (run_all or process_op_only) and not op_exists:
-        logger.info("Processing outpatient results...")
-        _process_outpatient_results(context, output_dir)
-        processed_new_results = True
-    elif process_op_only and op_exists:
-        logger.info("OP results already exist. No processing needed.")
-
-    result_files.update(
-        {
-            "op_csv": f"{output_dir}/{scenario_name}_detailed_op_results.csv",
-            "op_parquet": f"{output_dir}/{scenario_name}_detailed_op_results.parquet",
-        }
+    processed_op = _process_activity_type(
+        context, output_dir, "op", run_all or process_op_only, op_exists
     )
 
-    if (run_all or process_ae_only) and not ae_exists:
-        logger.info("Processing A&E results...")
-        _process_aae_results(context, output_dir)
-        processed_new_results = True
-    elif process_ae_only and ae_exists:
-        logger.info("A&E results already exist. No processing needed.")
-
-    result_files.update(
-        {
-            "ae_csv": f"{output_dir}/{scenario_name}_detailed_ae_results.csv",
-            "ae_parquet": f"{output_dir}/{scenario_name}_detailed_ae_results.parquet",
-        }
+    processed_ae = _process_activity_type(
+        context, output_dir, "ae", run_all or process_ae_only, ae_exists
     )
 
+    # Track if any new results were processed
+    processed_new_results = any([processed_ip, processed_op, processed_ae])
+
+    # Get all result file paths
+    result_files = _get_result_file_paths(output_dir, scenario_name)
+
+    # Report timing if we processed anything
     if processed_new_results:
         # Calculate and report the total time only if we did some work
         total_end_time = time.perf_counter()
