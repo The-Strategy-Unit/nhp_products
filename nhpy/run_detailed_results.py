@@ -47,7 +47,6 @@ from azure.core.exceptions import (
     ResourceNotFoundError,
     ServiceRequestError,
 )
-from dotenv import load_dotenv
 from tqdm import tqdm
 
 from nhpy import az, process_data, process_results
@@ -55,6 +54,7 @@ from nhpy.config import ExitCodes
 from nhpy.types import ProcessContext
 from nhpy.utils import (
     EnvironmentVariableError,
+    _load_dotenv_file,
     configure_logging,
     get_logger,
 )
@@ -76,14 +76,8 @@ def get_memory_usage():
     return rusage.ru_maxrss / 1024  # Convert KB to MB
 
 
-# Try to load from ~/.config/<project_name>/.env first, fall back to default behaviour
-project_name = os.path.basename(os.path.dirname(os.path.abspath(__name__)))
-config_env_path = os.path.expanduser(f"~/.config/{project_name}/.env")
-if os.path.exists(config_env_path):
-    # Use interpolate=False to avoid warnings with complex values in .env file
-    load_dotenv(config_env_path, interpolate=False)
-else:
-    load_dotenv(interpolate=False)
+# Load environment variables using centralized approach from utils
+_load_dotenv_file()
 
 
 def _initialise_connections_and_params(
@@ -311,7 +305,11 @@ def _process_inpatient_results(
     del model_runs_df, model_runs, original_df, reference_df
     if "az" in sys.modules and hasattr(sys.modules["az"], "_model_results_cache"):
         # Clear the cache after processing
-        sys.modules["az"]._model_results_cache.clear()
+        cache = sys.modules["az"]._model_results_cache
+        # Use getattr to get the clear method and call it if it exists
+        clear_method = getattr(cache, "clear", None)
+        if callable(clear_method):
+            clear_method()
     gc.collect()
     logger.info(
         f"Memory cleaned after IP processing, current usage: {get_memory_usage():.2f} MB"
@@ -456,7 +454,11 @@ def _process_outpatient_results(
     del op_model_runs_df, op_model_runs, original_df, reference_df
     if "az" in sys.modules and hasattr(sys.modules["az"], "_model_results_cache"):
         # Clear the cache after processing
-        sys.modules["az"]._model_results_cache.clear()
+        cache = sys.modules["az"]._model_results_cache
+        # Use getattr to get the clear method and call it if it exists
+        clear_method = getattr(cache, "clear", None)
+        if callable(clear_method):
+            clear_method()
     gc.collect()
     logger.info(
         f"Memory cleaned after OP processing, current usage: {get_memory_usage():.2f} MB"
@@ -637,7 +639,11 @@ def _process_aae_results(
     del ae_model_runs_df, ae_model_runs, original_df, reference_df
     if "az" in sys.modules and hasattr(sys.modules["az"], "_model_results_cache"):
         # Clear the cache after processing
-        sys.modules["az"]._model_results_cache.clear()
+        cache = sys.modules["az"]._model_results_cache
+        # Use getattr to get the clear method and call it if it exists
+        clear_method = getattr(cache, "clear", None)
+        if callable(clear_method):
+            clear_method()
     gc.collect()
     logger.info(
         f"Memory cleaned after A&E processing, current usage: {get_memory_usage():.2f} MB"

@@ -12,6 +12,7 @@ from collections import defaultdict
 
 import numpy as np
 import polars as pl
+from numpy.typing import NDArray
 
 from nhpy.config import Constants
 from nhpy.process_data import n_runs
@@ -271,11 +272,11 @@ def process_model_runs_dict(
                 v_ = np.concatenate((v_, zeros))
 
             # Use standard percentile calculation for confidence intervals
-            x = np.percentile(v_, [10, 50, 90])
-            lwr_ci = x[0]
-            median = x[1]
-            mean = np.mean(v_)
-            upr_ci = x[2]
+            # Extract percentiles individually to avoid subscripting
+            lwr_ci = float(np.percentile(v_, 10))
+            median = float(np.percentile(v_, 50))
+            upr_ci = float(np.percentile(v_, 90))
+            mean = float(np.mean(v_))
 
             # Create a dict for this row with all columns and metrics
             # Convert None to empty string in column values to match Pandas behavior
