@@ -283,7 +283,9 @@ def run_scenario_with_full_results(
     )
 
     # Prepare parameters for full results run
-    mod_params = _prepare_full_results_params(params=params)
+    # Convert dict[str, str] to dict[str, object] for type compatibility
+    params_obj: dict[str, object] = {k: v for k, v in params.items()}
+    mod_params = _prepare_full_results_params(params=params_obj)
 
     # Validate parameters against schema
     _validate_params(mod_params)
