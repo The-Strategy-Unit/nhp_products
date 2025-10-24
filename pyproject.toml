@@ -60,7 +60,6 @@ dev = [
     "pre-commit>=4.2.0",      # manage and maintain multi-language pre-commit hooks
     "ruff>=0.12.0",           # Linter & formatter
     "ty>=0.0.1a14",           # Type checker
-    "pyright>=1.1.0",         # Type checking
     "ipdb>=0.13.13",          # IPython-enabled pdb
     "pytest>=8.4.1",          # Testing
     "psutil>=7.1.2",          # process and system utilities
