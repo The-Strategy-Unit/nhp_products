@@ -111,8 +111,8 @@ def get_memory_usage():
 
 
 # %%
-# Load environment variables using centralized approach from utils
-_load_dotenv_file()
+# Load environment variables
+_load_dotenv_file(interpolate=False)
 
 # %% [markdown]
 # ## Connection and Parameter Initialisation

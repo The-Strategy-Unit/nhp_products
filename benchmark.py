@@ -41,14 +41,13 @@ from logging import DEBUG, INFO
 from pathlib import Path
 from typing import Any, TypedDict
 
-from dotenv import load_dotenv
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.table import Table
 from rich.theme import Theme
 
-from nhpy.utils import get_logger
+from nhpy.utils import _load_dotenv_file, get_logger
 
 
 # TypedDict definitions for better typing
@@ -505,7 +504,10 @@ def load_scenario_path() -> tuple[str | None, str | None]:
     """
     project_name = Path(__file__).resolve().parent.name
 
-    # Platform-specific config dir
+    # Load environment variables with interpolate=False to handle complex JSON values
+    _load_dotenv_file(interpolate=False)
+
+    # Platform-specific config dir for direct file access in case dotenv loading fails
     if sys.platform.startswith("win"):  # Windows
         config_dir = Path.home() / "AppData" / "Local" / project_name
     elif sys.platform.startswith("darwin"):  # macOS
@@ -514,16 +516,6 @@ def load_scenario_path() -> tuple[str | None, str | None]:
         config_dir = Path.home() / ".config" / project_name
 
     config_env_path = config_dir / ".env"
-
-    # Handle multi-line JSON values separately
-    if config_env_path.exists():
-        logger.debug(f"Loading environment from {config_env_path}")
-        # Use interpolate=False to avoid dotenv trying to expand variables in JSON
-        # Override=True to ensure values from the file take precedence
-        load_dotenv(dotenv_path=str(config_env_path), override=True, interpolate=False)
-    else:
-        logger.debug("Loading environment from default .env file")
-        load_dotenv(interpolate=False)
 
     # When loading from dotenv fails, read file directly (more robust than JSON parse)
     if config_env_path.exists():
