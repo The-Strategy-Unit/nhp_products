@@ -47,7 +47,6 @@ from azure.core.exceptions import (
     ResourceNotFoundError,
     ServiceRequestError,
 )
-from dotenv import load_dotenv
 from tqdm import tqdm
 
 from nhpy import az, process_data, process_results
@@ -55,6 +54,7 @@ from nhpy.config import ExitCodes
 from nhpy.types import ProcessContext
 from nhpy.utils import (
     EnvironmentVariableError,
+    _load_dotenv_file,
     configure_logging,
     get_logger,
 )
@@ -76,14 +76,8 @@ def get_memory_usage():
     return rusage.ru_maxrss / 1024  # Convert KB to MB
 
 
-# Try to load from ~/.config/<project_name>/.env first, fall back to default behaviour
-project_name = os.path.basename(os.path.dirname(os.path.abspath(__name__)))
-config_env_path = os.path.expanduser(f"~/.config/{project_name}/.env")
-if os.path.exists(config_env_path):
-    # Use interpolate=False to avoid warnings with complex values in .env file
-    load_dotenv(config_env_path, interpolate=False)
-else:
-    load_dotenv(interpolate=False)
+# Load environment variables
+_load_dotenv_file(interpolate=False)
 
 
 def _initialise_connections_and_params(

@@ -54,7 +54,6 @@ from azure.core.exceptions import (
     ServiceRequestError,
 )
 from azure.storage.blob import ContainerClient
-from dotenv import load_dotenv
 from tqdm import tqdm
 
 from nhpy import az, az_pl, process_data_pl, process_results_pl
@@ -63,6 +62,7 @@ from nhpy.config import ExitCodes
 # Import non-Pandas constants and functions from run_detailed_results.py
 from nhpy.utils import (
     EnvironmentVariableError,
+    _load_dotenv_file,
     configure_logging,
     get_logger,
 )
@@ -111,14 +111,8 @@ def get_memory_usage():
 
 
 # %%
-# Try to load from ~/.config/<project_name>/.env first, fall back to default behaviour
-project_name = Path(__name__).resolve().parent.name
-config_env_path = Path(f"~/.config/{project_name}/.env").expanduser()
-if config_env_path.exists():
-    # Use interpolate=False to avoid warnings with complex values in .env file
-    load_dotenv(str(config_env_path), interpolate=False)
-else:
-    load_dotenv(interpolate=False)
+# Load environment variables
+_load_dotenv_file(interpolate=False)
 
 # %% [markdown]
 # ## Connection and Parameter Initialisation
