@@ -49,7 +49,6 @@ from nhpy.utils import (
     get_logger,
 )
 
-# %% Load environment variables using centralized approach
 _load_dotenv_file()
 
 

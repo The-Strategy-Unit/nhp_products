@@ -12,7 +12,9 @@ This module provides utilities for:
 # %%
 # Imports
 import logging
+import os
 import re
+import sys
 from os import getenv
 from pathlib import Path
 from typing import cast
@@ -114,16 +116,41 @@ logger = get_logger()
 
 
 # %%
-def _load_dotenv_file() -> None:
-    """Load .env file with proper error handling."""
+def get_env_path(project_name: str) -> Path:
+    # Write a docstring for this function
+    """Get the path to the .env file based on OS conventions.
+    Args:
+        project_name: Name of the project to create the config directory for.
+    Returns:
+        Path: Path to the .env file.
+    """
+    if sys.platform == "win32":
+        base = Path(os.getenv("APPDATA", Path.home() / "AppData" / "Roaming"))
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path(os.getenv("XDG_CONFIG_HOME", Path.home() / ".config"))
+
+    return base / project_name / ".env"
+
+
+# %%
+def _load_dotenv_file(interpolate: bool = False) -> None:
+    """Load .env file with proper error handling.
+
+    Args:
+        interpolate: Whether to interpolate environment variables in the .env file.
+                     Defaults to False to avoid warnings with complex values.
+    """
     # Get repository name from current directory
     repo_name = Path.cwd().name
 
-    # Check ~/.config/repo_name/.env first
-    config_path = Path.home() / ".config" / repo_name / ".env"
+    # Check ~/.config/repo_name/.env or equivalent, first
+    config_path = get_env_path(project_name=repo_name)
+
     if config_path.exists():
         try:
-            load_dotenv(dotenv_path=config_path)
+            load_dotenv(dotenv_path=config_path, interpolate=interpolate)
             return
         except (PermissionError, IOError) as e:
             logger.error(f"Error loading {config_path}: {e}")
@@ -133,7 +160,7 @@ def _load_dotenv_file() -> None:
     local_path = Path(".env")
     if local_path.exists():
         try:
-            load_dotenv()
+            load_dotenv(interpolate=interpolate)
             return
         except PermissionError as e:
             logger.error(f"Permission denied when loading .env file: {e}")

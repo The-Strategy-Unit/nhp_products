@@ -76,8 +76,8 @@ def get_memory_usage():
     return rusage.ru_maxrss / 1024  # Convert KB to MB
 
 
-# Load environment variables using centralized approach from utils
-_load_dotenv_file()
+# Load environment variables
+_load_dotenv_file(interpolate=False)
 
 
 def _initialise_connections_and_params(
