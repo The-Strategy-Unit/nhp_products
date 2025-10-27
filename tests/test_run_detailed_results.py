@@ -9,6 +9,8 @@ Run this to verify basic functionality without complex test frameworks.
 import logging
 import os
 import sys
+import tempfile
+from pathlib import Path
 
 from nhpy.utils import configure_logging, get_logger
 
@@ -37,14 +39,12 @@ def test_results_exist_check():
     logger.info("🧪 Testing results existence check...")
 
     # Test with non-existent directory
-    exists = _check_results_exist("/tmp/nonexistent", "test-scenario", "ip")
+    tmproot = tempfile.gettempdir()
+    exists = _check_results_exist(f"{tmproot}/nonexistent", "test-scenario", "ip")
     assert exists is False
     logger.info("  ✅ Non-existent directory handling works")
 
     # Create temporary test files
-    import tempfile
-    from pathlib import Path
-
     with tempfile.TemporaryDirectory() as tmpdir:
         scenario_name = "test-scenario"
 
