@@ -39,8 +39,9 @@ def test_results_exist_check():
     logger.info("🧪 Testing results existence check...")
 
     # Test with non-existent directory
-    tmproot = Path(tempfile.gettempdir())
-    exists = _check_results_exist(str(tmproot / "nonexistent"), "test-scenario", "op")
+    tmproot = tempfile.gettempdir()
+    nonexistent = str(Path(tmproot) / "nonexistent")
+    exists = _check_results_exist(nonexistent, "test-scenario", "op")
     assert exists is False
     logger.info("  ✅ Non-existent directory handling works")
 
