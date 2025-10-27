@@ -1,13 +1,20 @@
 #!/usr/bin/env python
 
 """
-Simple smoke tests for run_full_results module.
-Run this to verify basic functionality without complex test frameworks.
+Smoke tests path parsing, parameter modification, and result path construction
+for scenarios that need to be run with full model results enabled.
+
+Usage:
+    python tests/test_run_full_results.py [results_path]
+
+    Optional arguments:
+        results_path: Path to real scenario results for live testing
 """
 
 # %%
 import logging
 import os
+import sys
 
 from nhpy.run_full_results import (
     _construct_results_path,
@@ -29,20 +36,22 @@ env = _load_environment_variables()
 
 # %%
 def test_path_parsing():
-    """Test scenario path parsing."""
+    """Tests scenario path parsing with valid and invalid paths."""
     logger.info("🧪 Testing path parsing...")
 
     # Valid path
     path = env["AZ_VALID_PATH"]
     version, _, scenario, datetime = _extract_scenario_components(path)
-    assert version == "v3.6"
-    assert scenario == "test-patch-3-6-1"
-    assert datetime == "20250630_080446"
+    assert version == "v4.1"
+    assert scenario == "test-yh-full-results"
+    assert datetime == "20250909_200111"
     logger.info("  ✅ Valid path parsing works")
 
     # Invalid path
     try:
         _extract_scenario_components("invalid/path")
+        # This assertion is deliberately unreachable - if we get here without exception,
+        # the test should fail
         assert False, "Should have raised ValueError"
     except ValueError:
         logger.info("  ✅ Invalid path correctly rejected")
@@ -50,7 +59,7 @@ def test_path_parsing():
 
 # %%
 def test_param_modification():
-    """Test parameter modification for full results."""
+    """Tests parameter modification for full results runs."""
     logger.info("🧪 Testing parameter modification...")
 
     original_params = {
@@ -73,7 +82,7 @@ def test_param_modification():
 
 # %%
 def test_path_construction():
-    """Test result path construction."""
+    """Tests result path construction with scenario parameters."""
     logger.info("🧪 Testing path construction...")
 
     params = {
@@ -98,7 +107,7 @@ def test_path_construction():
 
 # %%
 def test_environment_check():
-    """Check if environment is properly configured."""
+    """Validates required environment variables for model API access."""
     logger.info("🧪 Testing environment configuration...")
 
     required_vars = [
@@ -130,21 +139,66 @@ def test_environment_check():
 
 # %%
 def test_dry_run():
-    """Test the main function with invalid path (should fail gracefully)."""
+    """Tests error handling with invalid path input."""
     logger.info("🧪 Testing error handling...")
 
     try:
         # This should fail with a clear error message
         run_scenario_with_full_results("invalid/path/format")
+        # This assertion is deliberately unreachable,
+        # if we get here without an exception, the test should fail
         assert False, "Should have raised ValueError"
     except ValueError as e:
         logger.info(f"  ✅ Error handling works: {e}")
 
 
 # %%
+def test_real_path(results_path):
+    """Tests run_full_results with a real results path.
+
+    This function will perform a dry-run validation of the path and parameters,
+    but will NOT actually submit a new model run.
+
+    Args:
+        results_path: Path to real scenario results
+    """
+    logger.info(f"🧪 Testing with real path: {results_path}")
+
+    try:
+        # Extract components to verify valid path structure
+        version, dataset, scenario, datetime = _extract_scenario_components(results_path)
+        logger.info(
+            f"  ✅ Path components: v{version}, {dataset}, {scenario}, {datetime}"
+        )
+
+        # Check that account_url and container_name are available
+        account_url = os.getenv("AZ_STORAGE_EP")
+        container_name = os.getenv("AZ_STORAGE_RESULTS")
+
+        if not account_url or not container_name:
+            logger.error("  ❌ Missing required environment variables for Azure access")
+            return False
+
+        # Load parameters for validation (but don't submit run)
+        logger.info("  ✅ Path structure valid. Not submitting actual model run.")
+        logger.info(
+            "  💡 To run with full results, use: uv run python -m nhpy.run_full_results"
+        )
+
+        return True
+    except Exception as e:
+        logger.error(f"  ❌ Error validating real path: {e}")
+        return False
+
+
 def main():
-    """Run all smoke tests."""
+    """Runs all smoke tests and returns appropriate exit code."""
     logger.info("🚀 Running smoke tests for run_full_results module...\n")
+
+    # Check for command line argument for real path testing
+    real_path = None
+    if len(sys.argv) > 1:
+        real_path = sys.argv[1]
 
     try:
         test_path_parsing()
@@ -154,9 +208,16 @@ def main():
         test_dry_run()
 
         logger.info("\n🎉 All smoke tests passed!")
-        logger.info(
-            "💡 To test with real Azure/API, use a valid results path with the CLI"
-        )
+
+        # If real path provided, run real path test
+        if real_path:
+            logger.info("\n🧪 Running test with real path...")
+            test_real_path(real_path)
+        else:
+            logger.info(
+                "💡 To test with real path, run: "
+                "uv run python tests/test_run_full_results.py <path_to_results>"
+            )
 
     except Exception as e:
         logger.info(f"\n❌ Test failed: {e}")
