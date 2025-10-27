@@ -103,6 +103,26 @@ flowchart TD
     %% Flow direction: Top to bottom (TD)
 ```
 
+## Smoke Tests
+
+The repository contains lightweight smoke tests for the core orchestration modules. Smoke tests are simple, quick tests that verify basic functionality without complex test frameworks. They help ensure that key functions work as expected before running more comprehensive tests or using the modules in production.
+
+The following modules have smoke tests:
+- `check_full_results.py` - Tests blob path analysis and result detection
+- `run_full_results.py` - Tests parameter handling and path construction
+- `run_detailed_results.py` - Tests results file validation and processing
+- `run_detailed_results_pl.py` - Polars implementation tests
+- `pipeline.py` - Tests the integration of the above modules
+
+To run the smoke tests:
+```bash
+# Run a specific smoke test
+uv run python tests/test_check_full_results.py
+
+# Run all smoke tests
+for test in tests/test_*.py; do uv run python $test; done
+```
+
 ## Products
 
 We have a number of products that are available on request. These are:
