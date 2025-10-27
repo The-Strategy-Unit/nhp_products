@@ -39,8 +39,8 @@ def test_results_exist_check():
     logger.info("🧪 Testing results existence check...")
 
     # Test with non-existent directory
-    tmproot = tempfile.gettempdir()
-    exists = _check_results_exist(f"{tmproot}/nonexistent", "test-scenario", "op")
+    tmproot = Path(tempfile.gettempdir())
+    exists = _check_results_exist(str(tmproot / "nonexistent"), "test-scenario", "op")
     assert exists is False
     logger.info("  ✅ Non-existent directory handling works")
 
@@ -54,14 +54,14 @@ def test_results_exist_check():
         logger.info("  ✅ Missing files correctly detected")
 
         # Create only CSV file
-        csv_path = Path(f"{tmpdir}/{scenario_name}_detailed_op_results.csv")
+        csv_path = Path(tmpdir) / f"{scenario_name}_detailed_op_results.csv"
         csv_path.touch()
         exists = _check_results_exist(tmpdir, scenario_name, "op")
         assert exists is False
         logger.info("  ✅ Partial files correctly rejected")
 
         # Create both CSV and Parquet files
-        parquet_path = Path(f"{tmpdir}/{scenario_name}_detailed_op_results.parquet")
+        parquet_path = Path(tmpdir) / f"{scenario_name}_detailed_op_results.parquet"
         parquet_path.touch()
         exists = _check_results_exist(tmpdir, scenario_name, "op")
         assert exists is True
