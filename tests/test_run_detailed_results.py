@@ -44,8 +44,8 @@ def test_check_results_exist():
     logger.info("  ✅ Non-existent results correctly detected")
 
     # Create temporary output directory
-    import tempfile
-    from pathlib import Path
+    import tempfile  # noqa PLC0415
+    from pathlib import Path  # noqa PLC0415
 
     with tempfile.TemporaryDirectory() as tmpdir:
         scenario_name = "test-scenario"
