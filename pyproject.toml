@@ -62,6 +62,7 @@ dev = [
     "pyright>=1.1.0",         # Type checking
     "ipdb>=0.13.13",          # IPython-enabled pdb
     "pytest>=8.4.1",          # Testing
+    "psutil>=7.1.2",          # process and system utilities
     # For Databricks
     "build>=1.2.2",           # Build frontend
     "setuptools>=80.7.1",     # Easily download, build, install, upgrade, and uninstall Python packages
