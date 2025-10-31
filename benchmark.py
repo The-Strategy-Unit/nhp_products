@@ -31,7 +31,6 @@ import json
 import os
 import random
 import re
-import resource
 import statistics
 import subprocess
 import sys
@@ -41,6 +40,7 @@ from logging import DEBUG, INFO
 from pathlib import Path
 from typing import Any, TypedDict
 
+import psutil
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.panel import Panel
@@ -237,13 +237,16 @@ def _execute_command(command: str) -> None:
 def get_memory_usage() -> float:
     """Get current memory usage in MB.
 
-    Uses the resource module which provides more accurate memory usage information
-    than sys.getsizeof. This helps monitor memory consumption during processing.
+    Uses psutil to get the Resident Set Size (RSS), which is the non-swapped physical
+    memory a process has used. This is a cross-platform alternative to resource.getrusage
+    that works on Windows, Mac, and Linux with minimal overhead.
     """
-    # Resource module memory info is more accurate than sys.getsizeof
-    rusage = resource.getrusage(resource.RUSAGE_SELF)
+    # Get the process memory info
+    process = psutil.Process()
+    memory_info = process.memory_info()
 
-    return rusage.ru_maxrss / 1024  # KB to MB
+    # Return RSS (Resident Set Size) in MB
+    return memory_info.rss / (1024 * 1024)  # Convert bytes to MB
 
 
 # %%
