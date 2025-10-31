@@ -8,6 +8,7 @@ requires-python = ">=3.12"
 dependencies = [
     # CLI
     "colorama>=0.4.6",
+    "rich>=14.2.0",
     # Azure packages
     "azure-core>=1.32.0",
     "azure-identity>=1.17.1",
