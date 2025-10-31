@@ -38,7 +38,7 @@ import time
 import traceback
 from logging import DEBUG, INFO
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
 
 import psutil
 from rich.console import Console
@@ -510,44 +510,14 @@ def load_scenario_path() -> tuple[str | None, str | None]:
     # Load environment variables with interpolate=False to handle complex JSON values
     _load_dotenv_file(interpolate=False)
 
-    # Platform-specific config dir for direct file access in case dotenv loading fails
-    if sys.platform.startswith("win"):  # Windows
-        config_dir = Path.home() / "AppData" / "Local" / project_name
-    elif sys.platform.startswith("darwin"):  # macOS
-        config_dir = Path.home() / "Library" / "Application Support" / project_name
-    else:  # Linux and other Unix-like systems
-        config_dir = Path.home() / ".config" / project_name
-
-    config_env_path = config_dir / ".env"
-
-    # When loading from dotenv fails, read file directly (more robust than JSON parse)
-    if config_env_path.exists():
+    # If .env contains AZ_FULL_RESULTS, parse it as json
+    az_full_results = os.getenv("AZ_FULL_RESULTS")
+    if az_full_results:
         try:
-            with open(config_env_path, "r") as f:
-                env_content = f.read()
-
-            # Find the content between AZ_FULL_RESULTS={ and the next }
-            match = re.search(r"AZ_FULL_RESULTS=\{(.*?)\}", env_content, re.DOTALL)
-            if match:
-                content = match.group(1)
-
-                # Extract key-value pairs
-                pairs = re.findall(r'"([^"]+)":\s*"([^"]+)"', content)
-                az_full_paths = {key: value for key, value in pairs}
-                logger.debug(f"Extracted {len(az_full_paths)} scenarios from config file")
-            else:
-                console.print("[error]Could not find AZ_FULL_RESULTS in config file[/]")
-                return None, None
-        except Exception as e:
-            console.print(f"[error]Error reading config file: {str(e)}[/]")
+            az_full_paths = json.loads(az_full_results)
+        except json.JSONDecodeError as e:
+            console.print(f"[error]Error parsing AZ_FULL_RESULTS JSON: {str(e)}[/]")
             return None, None
-    else:
-        console.print("[error]Config file not found at ~/.config/<project_name>/.env[/]")
-        return None, None
-
-    if not az_full_paths:
-        console.print("[error]No valid scenarios found in AZ_FULL_RESULTS[/]")
-        return None, None
 
     # Random scenario path
     logger.debug(f"Found {len(az_full_paths)} scenarios in AZ_FULL_RESULTS")
@@ -844,10 +814,10 @@ def _run_implementation_benchmark(
         console.print(f"[info]{implementation.title()} run times: {run_times_str}[/]")
 
         # Use direct assignment for type safety instead of update
-        result_data[f"{implementation}_time"] = time_result
-        result_data[f"{implementation}_memory"] = memory_result
-        result_data[f"{implementation}_stats"] = stats_result
-        result_data[impl_key] = True
+        result_data[Literal[f"{implementation}_time"]] = time_result
+        result_data[Literal[f"{implementation}_memory"]] = memory_result
+        result_data[Literal[f"{implementation}_stats"]] = stats_result
+        result_data[Literal[impl_key]] = True
         _save_checkpoint(checkpoint_path, result_data)
 
         # Explicit cast to match the return type annotation
