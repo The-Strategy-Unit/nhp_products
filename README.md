@@ -120,7 +120,9 @@ To run the smoke tests:
 uv run python tests/test_check_full_results.py
 
 # Run all smoke tests
-for test in tests/test_*.py; do uv run python $test; done
+for test in tests/test_*.py; do uv run python $test; done # Unix-like
+# or
+for %f in (tests\test_*.py) do uv run python "%f" # PowerShell
 ```
 
 ## Products
