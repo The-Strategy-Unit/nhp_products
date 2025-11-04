@@ -38,6 +38,7 @@ from azure.core.exceptions import (
     ServiceRequestError,
 )
 
+# Environment variables are loaded from utils
 from nhpy.az import get_azure_blobs, get_azure_credentials
 from nhpy.config import EmptyContainerError, ExitCodes
 from nhpy.utils import (
