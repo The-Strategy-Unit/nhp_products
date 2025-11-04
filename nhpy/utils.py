@@ -135,38 +135,39 @@ def get_env_path(project_name: str) -> Path:
 
 
 # %%
-def _load_dotenv_file(interpolate: bool = False) -> None:
+def _load_dotenv_file(interpolate: bool = False) -> tuple[bool, Path]:
     """Load .env file with proper error handling.
 
     Args:
         interpolate: Whether to interpolate environment variables in the .env file.
-                     Defaults to False to avoid warnings with complex values.
+
+    Returns:
+        bool: True if .env file is loaded successfully.
+
+    Raises:
+        FileNotFoundError: If no .env file is found
+        PermissionError: If permission is denied when accessing .env file
+        IOError: If an I/O error occurs when reading .env file
     """
-    # Get repository name from current directory
     repo_name = Path.cwd().name
-
-    # Check ~/.config/repo_name/.env or equivalent, first
     config_path = get_env_path(project_name=repo_name)
+    local_path = Path(".env")
 
+    # Try config path first
     if config_path.exists():
         try:
             load_dotenv(dotenv_path=config_path, interpolate=interpolate)
-            return
+            return True, config_path / ".env"
         except (PermissionError, IOError) as e:
             logger.error(f"Error loading {config_path}: {e}")
-            # Continue to try local .env
 
-    # Fall back to local .env
-    local_path = Path(".env")
+    # Try local .env
     if local_path.exists():
         try:
-            load_dotenv(interpolate=interpolate)
-            return
-        except PermissionError as e:
-            logger.error(f"Permission denied when loading .env file: {e}")
-            raise
-        except IOError as e:
-            logger.error(f"IO error when loading .env file: {e}")
+            load_dotenv(dotenv_path=local_path, interpolate=interpolate)
+            return True, local_path / ".env"
+        except (PermissionError, IOError) as e:
+            logger.error(f"Error loading {local_path}: {e}")
             raise
 
     error_msg = f"No .env file found in {config_path} or {local_path}"
@@ -174,6 +175,7 @@ def _load_dotenv_file(interpolate: bool = False) -> None:
     raise FileNotFoundError(error_msg)
 
 
+# %%
 def _validate_environment_variables(required_vars: list[str]) -> EnvironmentConfig:
     """Validate and return environment variables."""
     env_vars = {}

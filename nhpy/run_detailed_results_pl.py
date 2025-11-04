@@ -37,7 +37,6 @@ Exit codes:
 import argparse
 import gc
 import os
-import resource
 import sys
 import time
 from logging import DEBUG, INFO
@@ -47,6 +46,7 @@ from pathlib import Path
 from typing import TypedDict, cast
 
 import polars as pl
+import psutil
 from azure.core.exceptions import (
     ClientAuthenticationError,
     HttpResponseError,
@@ -100,14 +100,16 @@ logger = get_logger()
 def get_memory_usage():
     """Get current memory usage in MB.
 
-    Uses the resource module which provides more accurate memory usage information
-    than sys.getsizeof. This helps monitor memory consumption during the processing
-    of large datasets to prevent out-of-memory errors.
+    Uses psutil to get the Resident Set Size (RSS), which is the non-swapped physical
+    memory a process has used. This is a cross-platform alternative to resource.getrusage
+    that works on Windows, Mac, and Linux with minimal overhead.
     """
-    # Get memory info from resource module (more accurate than sys.getsizeof)
-    rusage = resource.getrusage(resource.RUSAGE_SELF)
-    # Return memory usage in MB
-    return rusage.ru_maxrss / 1024  # Convert KB to MB
+    # Get the process memory info
+    process = psutil.Process()
+    memory_info = process.memory_info()
+
+    # Return RSS (Resident Set Size) in MB
+    return memory_info.rss / (1024 * 1024)  # Convert bytes to MB
 
 
 # %%
@@ -1256,7 +1258,7 @@ def _process_activity_type(
         bool: True if new results were processed, False otherwise
     """
     if should_process and not exists:
-        logger.info(f"Processing {activity_type} results...")
+        logger.info(f"Processing {activity_type.upper()} results...")
         if activity_type == "ip":
             _process_inpatient_results(context, output_dir)
         elif activity_type == "op":

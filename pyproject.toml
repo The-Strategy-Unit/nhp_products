@@ -8,6 +8,7 @@ requires-python = ">=3.12"
 dependencies = [
     # CLI
     "colorama>=0.4.6",
+    "rich>=14.2.0",
     # Azure packages
     "azure-core>=1.32.0",
     "azure-identity>=1.17.1",
@@ -62,6 +63,7 @@ dev = [
     "ipdb>=0.13.13",          # IPython-enabled pdb
     "pytest>=8.4.1",          # Testing
     "fastcore>=1.8.14",       # Lightweight testing framework
+    "psutil>=7.1.2",          # process and system utilities
     # For Databricks
     "build>=1.2.2",           # Build frontend
     "setuptools>=80.7.1",     # Easily download, build, install, upgrade, and uninstall Python packages
@@ -108,13 +110,6 @@ combine-as-imports = true
 # Black-compatible formatting (default settings)
 quote-style = "double"
 exclude = ["*.ipynb"]
-
-# Pyright configuration
-[tool.pyright]
-include = ["nhpy", "notebooks"]
-exclude = ["**/node_modules", "**/__pycache__"]
-pythonVersion = "3.12"
-typeCheckingMode = "basic"
 
 [tool.pytest.ini_options]
 markers = [
