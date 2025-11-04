@@ -16,6 +16,7 @@ import logging
 import os
 import sys
 
+from fastcore.test import *
 from nhpy.run_full_results import (
     _construct_results_path,
     _extract_scenario_components,
@@ -42,19 +43,15 @@ def test_path_parsing():
     # Valid path
     path = env["AZ_VALID_PATH"]
     version, _, scenario, datetime = _extract_scenario_components(path)
-    assert version == "v4.1"
-    assert scenario == "test-yh-full-results"
-    assert datetime == "20250909_200111"
+    test_eq(version, "v4.1")
+    test_eq(scenario, "test-yh-full-results")
+    test_eq(datetime, "20250909_200111")
     logger.info("  ✅ Valid path parsing works")
 
     # Invalid path
-    try:
-        _extract_scenario_components("invalid/path")
-        # This assertion is deliberately unreachable - if we get here without exception,
-        # the test should fail
-        assert False, "Should have raised ValueError"
-    except ValueError:
-        logger.info("  ✅ Invalid path correctly rejected")
+    test_fail(lambda: _extract_scenario_components("invalid/path"),
+              exc=ValueError)
+    logger.info("  ✅ Invalid path correctly rejected")
 
 
 # %%
@@ -73,10 +70,16 @@ def test_param_modification():
 
     new_params = _prepare_full_results_params(original_params)
 
-    assert new_params["user"] == "ds-team"
-    assert new_params["viewable"] is False
-    assert new_params["original_datetime"] == "20250101_103015"  # Other params preserved
-    assert original_params["scenario"] == "my-test"  # Original unchanged
+    test_eq(new_params["user"], "ds-team")
+    test_eq(new_params["viewable"], False)
+    test_eq(new_params["original_datetime"], "20250101_103015")  # Other params preserved
+
+    # Check original unchanged
+    test_eq(original_params["scenario"], "my-test")
+
+    # Check all keys preserved
+    test_eq(set(new_params.keys()), set(original_params.keys()))
+
     logger.info("  ✅ Parameter modification works correctly")
 
 
@@ -99,9 +102,17 @@ def test_path_construction():
     expected_agg = "aggregated-model-results/v3.5/RXX/full-model-results/20250102_091500"
     expected_full = "full-model-results/v3.5/RXX/full-model-results/20250102_091500"
 
-    assert paths["json_path"] == expected_json
-    assert paths["aggregated_results_path"] == expected_agg
-    assert paths["full_results_path"] == expected_full
+    # Test all paths match expected
+    test_eq(paths["json_path"], expected_json)
+    test_eq(paths["aggregated_results_path"], expected_agg)
+    test_eq(paths["full_results_path"], expected_full)
+
+    # Test path contains required components
+    for path_key in ["aggregated_results_path", "full_results_path"]:
+        test_eq("RXX" in paths[path_key], True)
+        test_eq("full-model-results" in paths[path_key], True)
+        test_eq("20250102_091500" in paths[path_key], True)
+
     logger.info("  ✅ Path construction works correctly")
 
 
@@ -142,14 +153,9 @@ def test_dry_run():
     """Tests error handling with invalid path input."""
     logger.info("🧪 Testing error handling...")
 
-    try:
-        # This should fail with a clear error message
-        run_scenario_with_full_results("invalid/path/format")
-        # This assertion is deliberately unreachable,
-        # if we get here without an exception, the test should fail
-        assert False, "Should have raised ValueError"
-    except ValueError as e:
-        logger.info(f"  ✅ Error handling works: {e}")
+    test_fail(lambda: run_scenario_with_full_results("invalid/path/format"),
+              exc=ValueError)
+    logger.info("  ✅ Error handling works for invalid paths")
 
 
 # %%

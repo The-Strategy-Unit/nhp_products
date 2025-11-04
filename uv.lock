@@ -427,6 +427,18 @@ wheels = [
 ]
 
 [[package]]
+name = "fastcore"
+version = "1.8.14"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/41/fc/4782041a7e96ae3de2b6bc7a287693d619688d938f43e6d9e70a23874d51/fastcore-1.8.14.tar.gz", hash = "sha256:869735ef493dbc7e5e8cbfc35fa3310772ce4c768d5b3a82d6a0d571148401be", size = 83648, upload-time = "2025-10-29T05:38:46.285Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ed/c6/236247deaa155fad1b38b6deb95b8b76efd20f5107b4577eee42002cbf11/fastcore-1.8.14-py3-none-any.whl", hash = "sha256:a02a749c26243ffd54d6dd11165cf4a556c7cb08f4c7e47ff67b32c7b0183ce9", size = 86791, upload-time = "2025-10-29T05:38:44.343Z" },
+]
+
+[[package]]
 name = "fastjsonschema"
 version = "2.21.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1168,6 +1180,7 @@ dependencies = [
 [package.optional-dependencies]
 dev = [
     { name = "build" },
+    { name = "fastcore" },
     { name = "ipdb" },
     { name = "ipykernel" },
     { name = "ipython" },
@@ -1194,6 +1207,7 @@ requires-dist = [
     { name = "build", marker = "extra == 'dev'", specifier = ">=1.2.2" },
     { name = "colorama", specifier = ">=0.4.6" },
     { name = "cryptography", specifier = ">=44.0.0" },
+    { name = "fastcore", marker = "extra == 'dev'", specifier = ">=1.8.14" },
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "ipdb", marker = "extra == 'dev'", specifier = ">=0.13.13" },
     { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=6.29.5" },

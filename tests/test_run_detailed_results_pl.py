@@ -18,6 +18,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from fastcore.test import *
 from nhpy.utils import configure_logging, get_logger
 
 # %%
@@ -48,7 +49,7 @@ def test_results_exist_check():
     tmproot = tempfile.gettempdir()
     nonexistent = str(Path(tmproot) / "nonexistent")
     exists = _check_results_exist(nonexistent, "test-scenario", "op")
-    assert exists is False
+    test_eq(exists, False)
     logger.info("  ✅ Non-existent directory handling works")
 
     # Create temporary test files
@@ -57,21 +58,23 @@ def test_results_exist_check():
 
         # Test with no files
         exists = _check_results_exist(tmpdir, scenario_name, "op")
-        assert exists is False
+        test_eq(exists, False)
         logger.info("  ✅ Missing files correctly detected")
 
         # Create only CSV file
         csv_path = Path(tmpdir) / f"{scenario_name}_detailed_op_results.csv"
         csv_path.touch()
+        test_is(csv_path.exists(), True)
         exists = _check_results_exist(tmpdir, scenario_name, "op")
-        assert exists is False
+        test_eq(exists, False)
         logger.info("  ✅ Partial files correctly rejected")
 
         # Create both CSV and Parquet files
         parquet_path = Path(tmpdir) / f"{scenario_name}_detailed_op_results.parquet"
         parquet_path.touch()
+        test_is(parquet_path.exists(), True)
         exists = _check_results_exist(tmpdir, scenario_name, "op")
-        assert exists is True
+        test_eq(exists, True)
         logger.info("  ✅ Both files correctly detected")
 
 
@@ -95,15 +98,10 @@ def test_error_handling():
     """Tests error handling with missing environment variables or authentication."""
     logger.info("🧪 Testing error handling...")
 
-    try:
-        # This should fail with environment variable error
-        run_detailed_results("aggregated-model-results/v4.0/RXX/test/20250101_100000/")
-        # This assertion is deliberately unreachable - if we get here without exception,
-        # the test should fail
-        assert False, "Should have raised EnvironmentVariableError"
-    except Exception as e:
-        # Expected exception for missing environment variables or authentication
-        logger.info(f"  ✅ Expected exception: {type(e).__name__}")
+    # Use test_fail to verify an exception is raised
+    test_fail(lambda: run_detailed_results("aggregated-model-results/v4.0/RXX/test/20250101_100000/"),
+              exc=Exception)
+    logger.info("  ✅ Expected exception raised for environment or authentication issues")
 
 
 # %%
@@ -115,10 +113,8 @@ def test_public_api():
     try:
         from nhpy.run_detailed_results_pl import __all__  # noqa PLC0415
 
-        if "run_detailed_results" in __all__:
-            logger.info("  ✅ run_detailed_results properly exported")
-        else:
-            logger.info("  ⚠️  run_detailed_results not in __all__")
+        test_eq("run_detailed_results" in __all__, True)
+        logger.info("  ✅ run_detailed_results properly exported")
     except ImportError:
         logger.info("  ⚠️  No __all__ defined in module")
 
@@ -129,10 +125,8 @@ def test_public_api():
     params = list(sig.parameters.keys())
     expected_params = ["results_path", "output_dir", "config"]
 
-    if params == expected_params:
-        logger.info("  ✅ Function signature correct")
-    else:
-        logger.info(f"  ⚠️  Signature differs: {params}")
+    test_eq(params, expected_params)
+    logger.info("  ✅ Function signature correct")
 
 
 # %%
