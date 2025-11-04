@@ -12,7 +12,9 @@ This module provides utilities for:
 # %%
 # Imports
 import logging
+import os
 import re
+import sys
 from os import getenv
 from pathlib import Path
 from typing import cast
@@ -35,9 +37,16 @@ def get_module_name():
     except (NameError, AttributeError):
         # We're in IPython/Jupyter
         try:
-            from IPython import get_ipython  # noqa
+            from IPython import (  # noqa:  PLC0415
+                get_ipython,  # pyright: ignore[reportPrivateImportUsage]
+            )
+            # noqa:  PLC0415
 
-            return get_ipython().user_ns.get("__name__", "notebook")
+            ipython = get_ipython()
+            if ipython is not None:
+                return ipython.user_ns.get("__name__", "notebook")
+            else:
+                return "interactive"
         except (ImportError, AttributeError):
             return "interactive"
 
@@ -53,6 +62,9 @@ def get_logger(module=None):
 # %%
 def configure_logging(level: int = logging.INFO):
     """Configure logging with appropriate formatting."""
+    # Import tqdm here to ensure it's available only when needed
+    from tqdm.auto import tqdm  # noqa
+
     # Configure root logger - affects all loggers
     root_logger = logging.getLogger()
 
@@ -66,7 +78,19 @@ def configure_logging(level: int = logging.INFO):
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    handler = logging.StreamHandler()
+    # Create a custom handler that works with tqdm
+    class TqdmLoggingHandler(logging.Handler):
+        def emit(self, record):
+            try:
+                msg = self.format(record)
+                # Write to tqdm.write() which works with progress bars
+                tqdm.write(msg)
+                self.flush()
+            except Exception:
+                self.handleError(record)
+
+    # Use the custom handler instead of StreamHandler
+    handler = TqdmLoggingHandler()
 
     if level <= logging.DEBUG:
         formatter = logging.Formatter(
@@ -92,32 +116,58 @@ logger = get_logger()
 
 
 # %%
-def _load_dotenv_file() -> None:
-    """Load .env file with proper error handling."""
-    # Get repository name from current directory
-    repo_name = Path.cwd().name
+def get_env_path(project_name: str) -> Path:
+    # Write a docstring for this function
+    """Get the path to the .env file based on OS conventions.
+    Args:
+        project_name: Name of the project to create the config directory for.
+    Returns:
+        Path: Path to the .env file.
+    """
+    if sys.platform == "win32":
+        base = Path(os.getenv("APPDATA", Path.home() / "AppData" / "Roaming"))
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path(os.getenv("XDG_CONFIG_HOME", Path.home() / ".config"))
 
-    # Check ~/.config/repo_name/.env first
-    config_path = Path.home() / ".config" / repo_name / ".env"
+    return base / project_name / ".env"
+
+
+# %%
+def _load_dotenv_file(interpolate: bool = False) -> tuple[bool, Path]:
+    """Load .env file with proper error handling.
+
+    Args:
+        interpolate: Whether to interpolate environment variables in the .env file.
+
+    Returns:
+        bool: True if .env file is loaded successfully.
+
+    Raises:
+        FileNotFoundError: If no .env file is found
+        PermissionError: If permission is denied when accessing .env file
+        IOError: If an I/O error occurs when reading .env file
+    """
+    repo_name = Path.cwd().name
+    config_path = get_env_path(project_name=repo_name)
+    local_path = Path(".env")
+
+    # Try config path first
     if config_path.exists():
         try:
-            load_dotenv(dotenv_path=config_path)
-            return
+            load_dotenv(dotenv_path=config_path, interpolate=interpolate)
+            return True, config_path / ".env"
         except (PermissionError, IOError) as e:
             logger.error(f"Error loading {config_path}: {e}")
-            # Continue to try local .env
 
-    # Fall back to local .env
-    local_path = Path(".env")
+    # Try local .env
     if local_path.exists():
         try:
-            load_dotenv()
-            return
-        except PermissionError as e:
-            logger.error(f"Permission denied when loading .env file: {e}")
-            raise
-        except IOError as e:
-            logger.error(f"IO error when loading .env file: {e}")
+            load_dotenv(dotenv_path=local_path, interpolate=interpolate)
+            return True, local_path / ".env"
+        except (PermissionError, IOError) as e:
+            logger.error(f"Error loading {local_path}: {e}")
             raise
 
     error_msg = f"No .env file found in {config_path} or {local_path}"
@@ -125,6 +175,7 @@ def _load_dotenv_file() -> None:
     raise FileNotFoundError(error_msg)
 
 
+# %%
 def _validate_environment_variables(required_vars: list[str]) -> EnvironmentConfig:
     """Validate and return environment variables."""
     env_vars = {}
@@ -215,7 +266,7 @@ def _construct_results_path(params: dict[str, object]) -> ScenarioPaths:
 # %%
 def _load_scenario_params(
     results_path: str, account_url: str, container_name: str
-) -> dict[str, object]:
+) -> dict[str, str]:
     """
     Load parameters from an existing scenario using load_agg_params.
 
@@ -233,8 +284,8 @@ def _load_scenario_params(
     if not results_path:
         raise ValueError("Results path cannot be empty")
 
-    if not isinstance(results_path, str):
-        raise ValueError(f"Path must be a string, got {type(results_path).__name__}")
+    if type(results_path) is not str:
+        raise TypeError(f"{results_path} must be of type str")
 
     logger.info("Loading scenario parameters...")
     logger.debug(f"Loading parameters from: {results_path}")

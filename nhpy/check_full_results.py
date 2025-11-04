@@ -37,19 +37,19 @@ from azure.core.exceptions import (
     ResourceNotFoundError,
     ServiceRequestError,
 )
-from dotenv import load_dotenv
 
 from nhpy.az import get_azure_blobs, get_azure_credentials
 from nhpy.config import EmptyContainerError, ExitCodes
 from nhpy.utils import (
     _construct_results_path,
+    _load_dotenv_file,
     _load_scenario_params,
     configure_logging,
     get_logger,
 )
 
 # %%
-load_dotenv()
+_load_dotenv_file()
 
 
 # %%

@@ -8,11 +8,14 @@ requires-python = ">=3.12"
 dependencies = [
     # CLI
     "colorama>=0.4.6",
+    "rich>=14.2.0",
     # Azure packages
     "azure-core>=1.32.0",
     "azure-identity>=1.17.1",
     "azure-storage-blob>=12.24.0",
     # Data science core
+    # "polars==1.34.0",
+    "polars-lts-cpu>=1.33.1", # For older CPUs that don't support avx, avx2, fma
     "pandas>=2.2.3",
     "numpy>=2.1.3",
     "pyarrow>=18.1.0",
@@ -60,6 +63,7 @@ dev = [
     "pyright>=1.1.0",         # Type checking
     "ipdb>=0.13.13",          # IPython-enabled pdb
     "pytest>=8.4.1",          # Testing
+    "psutil>=7.1.2",          # process and system utilities
     # For Databricks
     "build>=1.2.2",           # Build frontend
     "setuptools>=80.7.1",     # Easily download, build, install, upgrade, and uninstall Python packages

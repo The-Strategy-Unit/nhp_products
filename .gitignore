@@ -86,9 +86,9 @@ venv.bak/
 
 # Python packaging and build artifacts
 *.egg-info/
-build/*               
-dist/                
-*.egg                
+build/*
+dist/
+*.egg
 
 # IDE and editor files
 .vscode/
@@ -110,3 +110,4 @@ data/*
 *.html
 
 queue/
+CLAUDE.md
