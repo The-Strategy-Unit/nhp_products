@@ -312,7 +312,11 @@ def _process_inpatient_results(
     del model_runs_df, model_runs, original_df, reference_df
     if "az" in sys.modules and hasattr(sys.modules["az"], "_model_results_cache"):
         # Clear the cache after processing
-        sys.modules["az"]._model_results_cache.clear()
+        cache = sys.modules["az"]._model_results_cache
+        # Use getattr to get the clear method and call it if it exists
+        clear_method = getattr(cache, "clear", None)
+        if callable(clear_method):
+            clear_method()
     gc.collect()
     logger.info(
         f"Memory cleaned after IP processing, current usage: {get_memory_usage():.2f} MB"
@@ -457,7 +461,11 @@ def _process_outpatient_results(
     del op_model_runs_df, op_model_runs, original_df, reference_df
     if "az" in sys.modules and hasattr(sys.modules["az"], "_model_results_cache"):
         # Clear the cache after processing
-        sys.modules["az"]._model_results_cache.clear()
+        cache = sys.modules["az"]._model_results_cache
+        # Use getattr to get the clear method and call it if it exists
+        clear_method = getattr(cache, "clear", None)
+        if callable(clear_method):
+            clear_method()
     gc.collect()
     logger.info(
         f"Memory cleaned after OP processing, current usage: {get_memory_usage():.2f} MB"
@@ -638,7 +646,11 @@ def _process_aae_results(
     del ae_model_runs_df, ae_model_runs, original_df, reference_df
     if "az" in sys.modules and hasattr(sys.modules["az"], "_model_results_cache"):
         # Clear the cache after processing
-        sys.modules["az"]._model_results_cache.clear()
+        cache = sys.modules["az"]._model_results_cache
+        # Use getattr to get the clear method and call it if it exists
+        clear_method = getattr(cache, "clear", None)
+        if callable(clear_method):
+            clear_method()
     gc.collect()
     logger.info(
         f"Memory cleaned after A&E processing, current usage: {get_memory_usage():.2f} MB"
