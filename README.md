@@ -157,6 +157,42 @@ version of the model, and then presents the results side-by-side for comparison.
 This notebook enables the development team to spot any unexpected behaviour in
 modelling between different model versions.
 
+## Running Tests
+
+The repository includes smoke tests for various modules to verify basic functionality. These are lightweight tests that don't require extensive test frameworks.
+
+### Running All Tests
+
+To run all smoke tests at once:
+
+```bash
+# Run all tests with a simple for loop
+for test in tests/test_*.py; do uv run python "$test"; done
+```
+
+### Running Individual Smoke Tests
+
+Each test can be run individually:
+
+```bash
+# Run tests for specific modules
+uv run python tests/test_check_full_results.py
+uv run python tests/test_run_full_results.py
+uv run python tests/test_run_detailed_results.py
+uv run python tests/test_run_detailed_results_pl.py
+uv run python tests/test_pipeline.py
+uv run python tests/test_benchmark.py
+```
+
+### Optional Test Arguments
+
+Some tests accept optional paths for live testing with real scenarios:
+
+```bash
+# Example testing with a real scenario path
+uv run python tests/test_check_full_results.py aggregated-model-results/v4.x/RXX/test/20250101_100000/
+```
+
 ## How to use the precommit hook
 
 A precommit hook runs every time you commit files to git. We have set it up in
