@@ -21,12 +21,15 @@ def convert_results_format(results: pd.DataFrame, include_baseline=True) -> pd.D
             .set_index([i for i in df.columns if i != "value"])
             .rename(columns={"value": "baseline"})
         )
-        model_runs_df = (
+        # First get the grouped data
+        grouped_data = (
             df.loc[df.index != 0]
             .groupby([i for i in df.columns if i != "value"])
             .agg(list)
-            .rename(columns={"value": "model_runs"})
         )
+        # Create a new DataFrame with the renamed column to satisfy type checker
+        model_runs_df = pd.DataFrame(grouped_data)
+        model_runs_df = model_runs_df.rename(columns={"value": "model_runs"})
         df_with_model_runs_combined = pd.concat(
             [baseline_df, model_runs_df],
             axis=1,
@@ -119,16 +122,15 @@ def compare_results(results_dict: dict, trust: str) -> pd.DataFrame:
         right_index=True,
         suffixes=("_old", "_new"),
     )
-    combined["%_diff"] = abs(
-        combined[["principal_old", "principal_new"]]
-        .pct_change(axis=1)["principal_new"]
-        .round(4)
-        .fillna(0)
-    )
+    # Create a temporary DataFrame with just the columns we need
+    temp_df = pd.DataFrame(combined[["principal_old", "principal_new"]])
+    # Use pct_change without the axis parameter, then extract the column we want
+    pct_change_df = temp_df.pct_change(periods=1, fill_method=None)
+    combined["%_diff"] = abs(pct_change_df["principal_new"].round(4).fillna(0))
     return combined
 
 
-def agg_stepcounts(stepcounts: pd.DataFrame) -> pd.DataFrame:
+def agg_stepcounts(stepcounts: pd.DataFrame) -> pd.Series:
     """Aggregates step_counts in old format of results JSON, grouping by 'change_factor',
     'measure' and 'strategy' and summing the 'principal' column
     TODO: Deprecate function; we should be working with Parquet format of model results
@@ -140,13 +142,13 @@ def agg_stepcounts(stepcounts: pd.DataFrame) -> pd.DataFrame:
         pd.DataFrame: Aggregated step counts
     """
     return (
-        stepcounts.groupby(["change_factor", "measure", "strategy"])
-        .sum("principal")
+        stepcounts.groupby(["change_factor", "measure", "strategy"])["principal"]
+        .sum()
         .astype(int)
     )
 
 
-def process_stepcounts(full_results: dict) -> pd.DataFrame:
+def process_stepcounts(full_results: dict) -> pd.Series:
     """Processes the step counts in the full model results JSON
     TODO: Deprecate function; we should be working with Parquet format of model results
 
@@ -177,12 +179,11 @@ def compare_default(
         pd.DataFrame: Combined dataframe with both model results compared
     """
     for df in df1, df2:
-        df["%_diff"] = abs(
-            df[["mean", "baseline"]]
-            .pct_change(fill_method=None, axis=1)["baseline"]
-            .round(4)
-            .fillna(0)
-        )
+        # Create a DataFrame with the columns explicitly to fix the typing issue
+        pct_df = pd.DataFrame(df[["mean", "baseline"]])
+        # Use pct_change without the axis parameter
+        pct_change_df = pct_df.pct_change(periods=1, fill_method=None)
+        df["%_diff"] = abs(pct_change_df["baseline"].round(4).fillna(0))
     cols_to_drop = [
         "dataset",
         "scenario",
@@ -222,12 +223,11 @@ def compare_stepcounts(results_dict: dict, trust: str) -> pd.DataFrame:
         suffixes=("_old", "_new"),
     ).fillna(0)
     combined["trust"] = trust
-    combined["%_diff"] = abs(
-        combined[["principal_old", "principal_new"]]
-        .pct_change(axis=1)["principal_new"]
-        .round(4)
-        .fillna(0)
-    )
+    # Cast to DataFrame explicitly to satisfy type checker
+    df = pd.DataFrame(combined[["principal_old", "principal_new"]])
+    # Use pct_change without the axis parameter
+    pct_change_df = df.pct_change(periods=1, fill_method=None)
+    combined["%_diff"] = abs(pct_change_df["principal_new"].round(4).fillna(0))
     return combined
 
 

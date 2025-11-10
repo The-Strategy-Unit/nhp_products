@@ -38,6 +38,7 @@ from azure.core.exceptions import (
     ServiceRequestError,
 )
 
+# Environment variables are loaded from utils
 from nhpy.az import get_azure_blobs, get_azure_credentials
 from nhpy.config import EmptyContainerError, ExitCodes
 from nhpy.utils import (
@@ -49,6 +50,7 @@ from nhpy.utils import (
 )
 
 # %%
+# Load environment variables
 _load_dotenv_file()
 
 
@@ -148,7 +150,9 @@ def check_full_results(
         )
 
     try:
-        results_path_dict = _construct_results_path(params=params)
+        # Convert dict[str, str] to dict[str, object] for type compatibility
+        params_obj: dict[str, object] = {k: v for k, v in params.items()}
+        results_path_dict = _construct_results_path(params=params_obj)
         full_results_path = results_path_dict["full_results_path"]
     except ValueError as e:
         logger.error(f"Error constructing full results path: {e}")

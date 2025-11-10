@@ -43,7 +43,7 @@ from logging import DEBUG, INFO
 from pathlib import Path
 
 # Define a Polars-specific ProcessContext type
-from typing import TypedDict
+from typing import TypedDict, cast
 
 import polars as pl
 import psutil
@@ -211,6 +211,162 @@ def _check_results_exist(output_dir: str, scenario_name: str, activity_type: str
     return False
 
 
+def _load_ip_reference_data(ctx: ProcessContext) -> pl.DataFrame:
+    """Load original inpatient reference data.
+
+    Args:
+        ctx: Processing context with connection information
+
+    Returns:
+        Reference DataFrame with original data
+    """
+    data_connection = ctx["data_connection"]
+    model_version_data = ctx["model_version_data"]
+    trust = ctx["trust"]
+    baseline_year = ctx["baseline_year"]
+
+    # Load original data
+    original_df = az_pl.load_data_file(
+        container_client=data_connection,
+        version=model_version_data,
+        dataset=trust,
+        activity_type="ip",
+        year=baseline_year,
+    )
+
+    # Pre-create the reference dataframe copy once
+    return original_df.drop(["speldur", "classpat"])
+
+
+def _process_ip_run(
+    run: int,
+    reference_df: pl.DataFrame,
+    params: dict[str, ContainerClient | str | int],
+    model_runs: dict,
+    ip_columns: list[str],
+) -> None:
+    """Process a single inpatient model run and update model_runs dictionary.
+
+    Args:
+        run: Run number (1-256)
+        reference_df: Reference DataFrame with original data
+        params: Dictionary containing connection and loading parameters
+        model_runs: Dictionary to update with results
+        ip_columns: Column names for result keys
+    """
+    # Load with batch functionality - this will cache surrounding runs
+    load_params = {
+        "version": params["model_version"],
+        "dataset": params["trust"],
+        "scenario_name": params["scenario_name"],
+        "run_id": params["run_id"],
+        "activity_type": "ip",
+        "run_number": run,
+        "batch_size": params["batch_size"],
+    }
+
+    # Cast the container client to the correct type for type checking
+    container_client = cast(ContainerClient, params["results_connection"])
+    df = az_pl.load_model_run_results_file(
+        container_client=container_client,
+        params=load_params,
+    )
+
+    # Use the pre-created reference dataframe
+    merged = reference_df.join(df, on="rn", how="inner")
+    results = process_data_pl.process_ip_detailed_results(merged)
+
+    # Build dictionary using same approach as Pandas for consistency
+    for row in results.iter_rows(named=True):
+        # Only add rows with valid sitetret
+        if row["sitetret"] is None or row["sitetret"] == "":
+            continue
+
+        k = tuple(row[col] for col in ip_columns[:-1])  # All columns except measure
+        if "measure" in row:
+            k = (*k, row["measure"])
+        v = row["value"]
+        if k not in model_runs:
+            model_runs[k] = []
+        model_runs[k].append(v)
+
+
+def _validate_ip_results(
+    model_runs_df: pl.DataFrame, actual_results_df: pl.DataFrame
+) -> None:
+    """Validate inpatient results by comparing with aggregated results.
+
+    Args:
+        model_runs_df: Processed detailed results
+        actual_results_df: Aggregated results for comparison
+    """
+    # Validate results
+    default_beddays_principal = int(
+        actual_results_df.filter(pl.col("measure") == "beddays")
+        .select(pl.col("mean").sum())
+        .item()
+    )
+
+    # Extract the mean column for beddays measure
+    detailed_beddays_principal = int(
+        model_runs_df.filter(pl.col("measure") == "beddays")
+        .select(pl.col("mean").sum())
+        .item()
+    )
+
+    try:
+        assert abs(default_beddays_principal - detailed_beddays_principal) <= 1
+    except AssertionError:
+        logger.warning(
+            f"""Validation mismatch: default={default_beddays_principal},
+            detailed={detailed_beddays_principal}"""
+        )
+
+
+def _save_ip_results(
+    model_runs_df: pl.DataFrame, output_dir: str, scenario_name: str
+) -> None:
+    """Save inpatient results to CSV and Parquet files.
+
+    Args:
+        model_runs_df: DataFrame with processed results
+        output_dir: Directory to save files
+        scenario_name: Scenario name for filename
+    """
+    model_runs_df.write_csv(f"{output_dir}/{scenario_name}_detailed_ip_results.csv")
+    model_runs_df.write_parquet(
+        f"{output_dir}/{scenario_name}_detailed_ip_results.parquet"
+    )
+
+
+def _clean_ip_memory(
+    model_runs_df: pl.DataFrame,
+    model_runs: dict,
+    original_df: pl.DataFrame,
+    reference_df: pl.DataFrame,
+) -> None:
+    """Clean up memory after IP processing.
+
+    Args:
+        model_runs_df: DataFrame with processed results
+        model_runs: Dictionary with model runs
+        original_df: Original DataFrame
+        reference_df: Reference DataFrame
+    """
+    del model_runs_df, model_runs, original_df, reference_df
+    if "az_pl" in sys.modules and hasattr(sys.modules["az_pl"], "_model_results_cache"):
+        # Clear the cache after processing
+        cache = sys.modules["az_pl"]._model_results_cache
+        # Use getattr to get the clear method and call it if it exists
+        clear_method = getattr(cache, "clear", None)
+        if callable(clear_method):
+            clear_method()
+    gc.collect()
+    logger.debug(
+        f"Memory cleaned after IP processing, current usage: {get_memory_usage():.2f} MB"
+    )
+
+
 def _process_inpatient_results(
     ctx: ProcessContext,
     output_dir: str,
@@ -235,81 +391,63 @@ def _process_inpatient_results(
 
     # Report memory usage at start
     logger.debug(f"Memory usage before IP processing: {get_memory_usage():.2f} MB")
+
     # Extract needed variables from ctx
     results_connection = ctx["results_connection"]
-    data_connection = ctx["data_connection"]
     model_version = ctx["model_version"]
-    model_version_data = ctx["model_version_data"]
     trust = ctx["trust"]
-    baseline_year = ctx["baseline_year"]
     run_id = ctx["run_id"]
     actual_results_df = ctx["actual_results_df"]
 
-    # Load original data
+    # Load reference data
     original_df = az_pl.load_data_file(
-        container_client=data_connection,
-        version=model_version_data,
+        container_client=ctx["data_connection"],
+        version=ctx["model_version_data"],
         dataset=trust,
         activity_type="ip",
-        year=baseline_year,
+        year=ctx["baseline_year"],
     )
+    reference_df = _load_ip_reference_data(ctx)
 
-    # Pre-allocate dictionary
+    # Pre-allocate dictionary and setup
     model_runs = {}
-
-    # Pre-create the reference dataframe copy once
-    reference_df = original_df.drop(["speldur", "classpat"])
-
-    # Choose a moderate batch size balancing memory usage and performance
     batch_size = 50
+
+    # Define columns for result keys
+    ip_columns = [
+        "sitetret",
+        "age_group",
+        "sex",
+        "pod",
+        "tretspef",
+        "los_group",
+        "maternity_delivery_in_spell",
+        "measure",
+    ]
 
     # Process all runs
     start = time.perf_counter()
     logger.debug(f"Starting IP processing with {get_memory_usage():.2f} MB memory usage")
+
+    # Process each model run
+    run_params = {
+        "results_connection": results_connection,
+        "model_version": model_version,
+        "trust": trust,
+        "scenario_name": scenario_name,
+        "run_id": run_id,
+        "batch_size": batch_size,
+    }
+
     for run in tqdm(range(1, 257), desc="IP"):
-        # Load with batch functionality - this will cache surrounding runs
-        df = az_pl.load_model_run_results_file(
-            container_client=results_connection,
-            params={
-                "version": model_version,
-                "dataset": trust,
-                "scenario_name": scenario_name,
-                "run_id": run_id,
-                "activity_type": "ip",
-                "run_number": run,
-                "batch_size": batch_size,  # This enables batch loading
-            },
+        _process_ip_run(
+            run=run,
+            reference_df=reference_df,
+            params=run_params,
+            model_runs=model_runs,
+            ip_columns=ip_columns,
         )
 
-        # Use the pre-created reference dataframe
-        merged = reference_df.join(df, on="rn", how="inner")
-        results = process_data_pl.process_ip_detailed_results(merged)
-
-        # Build dictionary using same approach as Pandas for consistency
-        # The column order is critical to match Pandas output
-        cols = [
-            "sitetret",
-            "age_group",
-            "sex",
-            "pod",
-            "tretspef",
-            "los_group",
-            "maternity_delivery_in_spell",
-            "measure",
-        ]
-
-        for row in results.iter_rows(named=True):
-            # Only add rows with valid sitetret
-            if row["sitetret"] is None or row["sitetret"] == "":
-                continue
-
-            k = tuple(row[col] for col in cols[:-1])  # All columns except measure
-            if "measure" in row:
-                k = (*k, row["measure"])
-            v = row["value"]
-            if k not in model_runs:
-                model_runs[k] = []
-            model_runs[k].append(v)
     end = time.perf_counter()
     logger.info(
         f"All IP model runs were processed in {end - start:.3f} sec, "
@@ -319,42 +457,14 @@ def _process_inpatient_results(
     # Process model runs dictionary after the loop completes
     model_runs_df = process_data_pl.process_model_runs_dict(
         model_runs,
-        columns=[
-            "sitetret",
-            "age_group",
-            "sex",
-            "pod",
-            "tretspef",
-            "los_group",
-            "maternity_delivery_in_spell",
-            "measure",
-        ],
+        columns=ip_columns,
     )
     logger.debug(
         f"IP data processed into dataframe, memory usage: {get_memory_usage():.2f} MB"
     )
 
     # Validate results
-    default_beddays_principal = int(
-        actual_results_df.filter(pl.col("measure") == "beddays")
-        .select(pl.col("mean").sum())
-        .item()
-    )
-
-    # Extract the mean column for beddays measure
-    detailed_beddays_principal = int(
-        model_runs_df.filter(pl.col("measure") == "beddays")
-        .select(pl.col("mean").sum())
-        .item()
-    )
-
-    try:
-        assert abs(default_beddays_principal - detailed_beddays_principal) <= 1
-    except AssertionError:
-        logger.warning(
-            f"""Validation mismatch: default={default_beddays_principal},
-            detailed={detailed_beddays_principal}"""
-        )
+    _validate_ip_results(model_runs_df, actual_results_df)
 
     # Format boolean values to match Pandas output
     model_runs_df = model_runs_df.with_columns(
@@ -367,20 +477,10 @@ def _process_inpatient_results(
     )
 
     # Save results
-    model_runs_df.write_csv(f"{output_dir}/{scenario_name}_detailed_ip_results.csv")
-    model_runs_df.write_parquet(
-        f"{output_dir}/{scenario_name}_detailed_ip_results.parquet"
-    )
+    _save_ip_results(model_runs_df, output_dir, scenario_name)
 
     # Clean up memory
-    del model_runs_df, model_runs, original_df, reference_df
-    if "az_pl" in sys.modules and hasattr(sys.modules["az_pl"], "_model_results_cache"):
-        # Clear the cache after processing
-        sys.modules["az_pl"]._model_results_cache.clear()
-    gc.collect()
-    logger.debug(
-        f"Memory cleaned after IP processing, current usage: {get_memory_usage():.2f} MB"
-    )
+    _clean_ip_memory(model_runs_df, model_runs, original_df, reference_df)
 
 
 # %% [markdown]
@@ -733,7 +833,11 @@ def _process_outpatient_results(
     del op_model_runs_df, op_model_runs, original_df, reference_df
     if "az_pl" in sys.modules and hasattr(sys.modules["az_pl"], "_model_results_cache"):
         # Clear the cache after processing
-        sys.modules["az_pl"]._model_results_cache.clear()
+        cache = sys.modules["az_pl"]._model_results_cache
+        # Use getattr to get the clear method and call it if it exists
+        clear_method = getattr(cache, "clear", None)
+        if callable(clear_method):
+            clear_method()
     gc.collect()
     logger.debug(
         f"Memory cleaned after OP processing, current usage: {get_memory_usage():.2f} MB"
@@ -1027,7 +1131,11 @@ def _process_aae_results(
     # Clean up memory
     del ae_model_runs_df, ae_model_runs, original_df, reference_df
     if "az_pl" in sys.modules and hasattr(sys.modules["az_pl"], "_model_results_cache"):
-        sys.modules["az_pl"]._model_results_cache.clear()
+        cache = sys.modules["az_pl"]._model_results_cache
+        # Use getattr to get the clear method and call it if it exists
+        clear_method = getattr(cache, "clear", None)
+        if callable(clear_method):
+            clear_method()
     gc.collect()
     logger.info(
         f"Memory cleaned after A&E processing, current usage: {get_memory_usage():.2f} MB"
