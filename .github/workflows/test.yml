@@ -1,0 +1,55 @@
+name: Run Tests
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+    
+    - name: Install dependencies
+      run: uv sync
+    
+    - name: Run tests with pytest
+      run: uv run pytest tests/ -v
+      env:
+        # Set dummy environment variables for tests that need them
+        AZ_STORAGE_EP: "https://example.blob.core.windows.net/"
+        AZ_STORAGE_CONTAINER: "test-container"
+        AZ_SUPPORTING_CONTAINER: "supporting-container"
+        AZ_STORAGE_DATA: "data"
+        AZ_STORAGE_RESULTS: "results"
+        AZ_STORAGE_INPUTS: "inputs"
+        AZ_VALID_PATH: "aggregated-model-results/v3.6/RXX/test-patch-3-6-1/20250630_080446"
+        STORAGE_ACCOUNT: "teststorage"
+        SUBSCRIPTION_ID: "00000000-0000-0000-0000-000000000000"
+        CONTAINER_IMAGE: "test-image"
+        AZURE_LOCATION: "uksouth"
+        SUBNET_NAME: "test-subnet"
+        SUBNET_ID: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/test/providers/Microsoft.Network/virtualNetworks/test-vnet/subnets/test-subnet"
+        USER_ASSIGNED_IDENTITY: "/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/test/providers/Microsoft.ManagedIdentity/userAssignedIdentities/test-identity"
+        CONTAINER_MEMORY: "4.0"
+        CONTAINER_CPU: "2.0"
+        AUTO_DELETE_COMPLETED_CONTAINERS: "true"
+        RESOURCE_GROUP: "test-rg"
+        LOG_ANALYTICS_WORKSPACE_ID: "00000000-0000-0000-0000-000000000000"
+        LOG_ANALYTICS_WORKSPACE_KEY: "test-key"
+        LOG_ANALYTICS_WORKSPACE_RESOURCE_ID: "/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/test/providers/microsoft.operationalinsights/workspaces/test-workspace"
