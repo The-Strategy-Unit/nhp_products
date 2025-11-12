@@ -46,7 +46,7 @@ jobs:
         AZ_STORAGE_DATA: "data"
         AZ_STORAGE_RESULTS: "results"
         AZ_STORAGE_INPUTS: "inputs"
-        AZ_VALID_PATH: "aggregated-model-results/v3.6/RXX/test-patch-3-6-1/20250630_080446"
+        AZ_VALID_PATH: ${{ secrets.AZ_VALID_PATH }}
         STORAGE_ACCOUNT: "teststorage"
         SUBSCRIPTION_ID: "00000000-0000-0000-0000-000000000000"
         CONTAINER_IMAGE: "test-image"
