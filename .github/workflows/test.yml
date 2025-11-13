@@ -39,25 +39,25 @@ jobs:
     - name: Run tests with pytest
       run: uv run pytest tests/ -v
       env:
-        # Set dummy environment variables for tests that need them
-        AZ_STORAGE_EP: "https://example.blob.core.windows.net/"
-        AZ_STORAGE_CONTAINER: "test-container"
-        AZ_SUPPORTING_CONTAINER: "supporting-container"
-        AZ_STORAGE_DATA: "data"
-        AZ_STORAGE_RESULTS: "results"
-        AZ_STORAGE_INPUTS: "inputs"
+        # Environment variables from secrets for smoke tests
+        AZ_STORAGE_EP: ${{ secrets.AZ_STORAGE_EP }}
+        AZ_STORAGE_CONTAINER: ${{ secrets.AZ_STORAGE_CONTAINER }}
+        AZ_SUPPORTING_CONTAINER: ${{ secrets.AZ_SUPPORTING_CONTAINER }}
+        AZ_STORAGE_DATA: ${{ secrets.AZ_STORAGE_DATA }}
+        AZ_STORAGE_RESULTS: ${{ secrets.AZ_STORAGE_RESULTS }}
+        AZ_STORAGE_INPUTS: ${{ secrets.AZ_STORAGE_INPUTS }}
         AZ_VALID_PATH: ${{ secrets.AZ_VALID_PATH }}
-        STORAGE_ACCOUNT: "teststorage"
-        SUBSCRIPTION_ID: "00000000-0000-0000-0000-000000000000"
-        CONTAINER_IMAGE: "test-image"
-        AZURE_LOCATION: "uksouth"
-        SUBNET_NAME: "test-subnet"
-        SUBNET_ID: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/test/providers/Microsoft.Network/virtualNetworks/test-vnet/subnets/test-subnet"
-        USER_ASSIGNED_IDENTITY: "/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/test/providers/Microsoft.ManagedIdentity/userAssignedIdentities/test-identity"
-        CONTAINER_MEMORY: "4.0"
-        CONTAINER_CPU: "2.0"
-        AUTO_DELETE_COMPLETED_CONTAINERS: "true"
-        RESOURCE_GROUP: "test-rg"
-        LOG_ANALYTICS_WORKSPACE_ID: "00000000-0000-0000-0000-000000000000"
-        LOG_ANALYTICS_WORKSPACE_KEY: "test-key"
-        LOG_ANALYTICS_WORKSPACE_RESOURCE_ID: "/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/test/providers/microsoft.operationalinsights/workspaces/test-workspace"
+        STORAGE_ACCOUNT: ${{ secrets.STORAGE_ACCOUNT }}
+        SUBSCRIPTION_ID: ${{ secrets.SUBSCRIPTION_ID }}
+        CONTAINER_IMAGE: ${{ secrets.CONTAINER_IMAGE }}
+        AZURE_LOCATION: ${{ secrets.AZURE_LOCATION }}
+        SUBNET_NAME: ${{ secrets.SUBNET_NAME }}
+        SUBNET_ID: ${{ secrets.SUBNET_ID }}
+        USER_ASSIGNED_IDENTITY: ${{ secrets.USER_ASSIGNED_IDENTITY }}
+        CONTAINER_MEMORY: ${{ secrets.CONTAINER_MEMORY }}
+        CONTAINER_CPU: ${{ secrets.CONTAINER_CPU }}
+        AUTO_DELETE_COMPLETED_CONTAINERS: ${{ secrets.AUTO_DELETE_COMPLETED_CONTAINERS }}
+        RESOURCE_GROUP: ${{ secrets.RESOURCE_GROUP }}
+        LOG_ANALYTICS_WORKSPACE_ID: ${{ secrets.LOG_ANALYTICS_WORKSPACE_ID }}
+        LOG_ANALYTICS_WORKSPACE_KEY: ${{ secrets.LOG_ANALYTICS_WORKSPACE_KEY }}
+        LOG_ANALYTICS_WORKSPACE_RESOURCE_ID: ${{ secrets.LOG_ANALYTICS_WORKSPACE_RESOURCE_ID }}
