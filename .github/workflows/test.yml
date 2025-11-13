@@ -37,6 +37,16 @@ jobs:
       - name: Check formatting (ruff)
         run: uv run ruff format --check .
 
+      - name: Create .env file
+        run: |
+          cat > .env << EOF
+          AZ_STORAGE_EP=${{ secrets.AZ_STORAGE_EP }}
+          AZ_STORAGE_RESULTS=${{ secrets.AZ_STORAGE_RESULTS }}
+          AZ_STORAGE_DATA=${{ secrets.AZ_STORAGE_DATA }}
+          AZ_VALID_PATH=${{ secrets.AZ_VALID_PATH }}
+          EOF
+        shell: bash
+
       - name: Run smoke tests
         run: |
           for test in tests/test_*.py; do
