@@ -36,8 +36,12 @@ jobs:
     - name: Check formatting (ruff)
       run: uv run ruff format --check .
     
-    - name: Run tests with pytest
-      run: uv run pytest tests/ -v
+    - name: Run smoke tests
+      run: |
+        for test in tests/test_*.py; do
+          echo "Running $test..."
+          uv run python "$test"
+        done
       env:
         # Minimum required environment variables for smoke tests
         AZ_STORAGE_EP: ${{ secrets.AZ_STORAGE_EP }}
