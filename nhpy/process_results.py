@@ -148,7 +148,7 @@ def agg_stepcounts(stepcounts: pd.DataFrame) -> pd.Series:
     )
 
 
-def process_stepcounts(full_results: dict) -> pd.Series:
+def process_stepcounts(full_results: dict) -> pd.DataFrame:
     """Processes the step counts in the full model results JSON
     TODO: Deprecate function; we should be working with Parquet format of model results
 
@@ -159,8 +159,10 @@ def process_stepcounts(full_results: dict) -> pd.Series:
         pd.DataFrame: Aggregated 'step_counts' from results
     """
     df = pd.DataFrame(full_results["results"]["step_counts"]).fillna("-")
+    if "strategy" not in df.columns:
+        df["strategy"] = "-"
     df_with_principal = add_principal(df)
-    return agg_stepcounts(df_with_principal)
+    return pd.DataFrame(agg_stepcounts(df_with_principal))
 
 
 def compare_default(
