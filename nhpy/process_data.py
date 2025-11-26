@@ -9,43 +9,7 @@ import pandas as pd
 n_runs = 256
 
 
-# this is from model.helpers.age_groups
-def age_groups(age: pd.Series) -> pd.Series:
-    """Cut age into groups
-
-    Takes a pandas Series of age's and cut's into discrete intervals
-
-    :param age: a Series of ages
-    :type age: pandas.Series
-
-    :returns: a Series of age groups
-    :rtype: pandas.Series
-    """
-
-    return pd.cut(
-        age.fillna(-1),
-        [-1, 0, 1, 5, 10, 16, 18, 35, 50, 65, 75, 85, 1000],
-        right=False,
-        labels=[
-            "Unknown",
-            "0",
-            "1-4",
-            "5-9",
-            "10-15",
-            "16-17",
-            "18-34",
-            "35-49",
-            "50-64",
-            "65-74",
-            "75-84",
-            "85+",
-        ],
-    ).astype(str)
-
-
 # this is from InpatientsModel._add_pod_to_data()
-
-
 def add_pod_to_data_ip(data: pd.DataFrame) -> pd.DataFrame:
     """Adds the POD column to data"""
 
@@ -271,7 +235,6 @@ def process_op_converted_from_ip(data: pd.DataFrame) -> pd.Series:
 
     # activity converted to OP should only be procedures
     data["pod"] = "op_procedure"
-    data["age_group"] = age_groups(data["age"])
     # op conversion should only ever be attendances, not teleattendances
     data["measure"] = "attendances"
     return (
@@ -353,7 +316,6 @@ def process_aae_converted_from_ip(data: pd.DataFrame) -> pd.Series:
 
     # activity converted to AAE should only be aae_type-05
     data["pod"] = "aae_type-05"
-    data["age_group"] = age_groups(data["age"])
     data = data.rename(columns={"group": "measure"})
     # Group the data and return a Series
     result_series = data.groupby(
