@@ -214,8 +214,7 @@ def _load_environment_variables() -> EnvironmentConfig:
     required_vars = [
         "AZ_STORAGE_EP",
         "AZ_STORAGE_RESULTS",
-        "AZ_STORAGE_DATA",
-        "AZ_VALID_PATH",
+        "AZ_STORAGE_DATA"
     ]
 
     return _validate_environment_variables(required_vars)
