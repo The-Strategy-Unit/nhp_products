@@ -208,3 +208,10 @@ causes issues, and once we productionise the notebooks into Python scripts.
    `pre-commit-comfig.yaml` on the files you have staged. If files fail the
    pre-commit check, it should fix the errors automatically - you will have to
    repeat the commit step with the corrected files.
+
+## Troubleshooting
+
+If you have problems running code, you could:
+
+* disconnect from the VPN and try again
+* try VS Code in preference to Positron
