@@ -215,3 +215,4 @@ If you have problems running code, you could:
 
 * disconnect from the VPN and try again
 * try VS Code in preference to Positron
+* check .env values are correct
