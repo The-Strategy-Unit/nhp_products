@@ -9,22 +9,6 @@ import pandas as pd
 n_runs = 256
 
 
-# this is from InpatientsModel._add_pod_to_data()
-def add_pod_to_data_ip(data: pd.DataFrame) -> pd.DataFrame:
-    """Adds the POD column to data"""
-
-    data["pod"] = "ip_" + data["group"] + "_admission"
-    classpat = data["classpat"]
-    data.loc[classpat == "2", "pod"] = "ip_elective_daycase"
-    data.loc[classpat == "3", "pod"] = "ip_regular_day_attender"
-    data.loc[classpat == "4", "pod"] = "ip_regular_night_attender"
-    # handle the type conversions: change the pods (from InpatientsModel.process_results)
-    data.loc[data["classpat"] == "-2", "pod"] = "ip_elective_daycase"
-    data.loc[data["classpat"] == "-1", "pod"] = "op_procedure"
-
-    return data
-
-
 # Adapted from InpatientsModel.process_results
 def process_ip_results(data: pd.DataFrame, los_groups: defaultdict) -> pd.DataFrame:
     """
@@ -34,7 +18,7 @@ def process_ip_results(data: pd.DataFrame, los_groups: defaultdict) -> pd.DataFr
     :param data: Data to be processed. Format should be similar to Model.data
     :type data: pd.DataFrame
     """
-
+    data.loc[data["classpat"] == "2", "pod"] = "ip_elective_daycase"
     data = data.assign(
         los_group=lambda x: x["speldur"].map(los_groups),
         admissions=1,
@@ -140,6 +124,7 @@ def process_ip_detailed_results(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         The processed and aggregated data
     """
+
     los_groups_detailed = defaultdict(
         lambda: "22+ days",
         {
