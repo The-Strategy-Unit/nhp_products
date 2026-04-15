@@ -37,9 +37,13 @@ import gc
 import os
 import sys
 import time
+from ast import Assert
+from contextlib import suppress
 from logging import INFO
 from pathlib import Path
+from typing import List
 
+import pandas as pd
 import psutil
 from azure.core.exceptions import (
     ClientAuthenticationError,
@@ -655,6 +659,52 @@ def _process_aae_results(
     logger.info(
         f"Memory cleaned after A&E processing, current usage: {get_memory_usage():.2f} MB"
     )
+
+
+def suppress_small_counts(
+    df: pd.DataFrame,
+    suppress_cols: List[str],
+    count_col: str = "value",
+    threshold: int = 5,
+) -> pd.DataFrame:
+    """Suppression of small counts in detailed results. Filters dataframe to only rows with
+    small numbers, then groups together values in specified columns and re-aggregates.
+
+    Args:
+        df (pd.DataFrame): Processed detailed results
+        suppress_cols (List[str]): List of columns to use in suppressing small numbers,
+        in order of preference.
+        count_col (str, optional): The name of the column with the values to be suppressed
+        and aggregated.
+        Defaults to "value".
+        threshold (int, optional): Maximum count allowed in the count_col
+
+    Returns:
+        pd.DataFrame: Processed detailed results with small counts aggregated together
+    """
+    logger.info("Beginning suppression...")
+    full_index_cols = df.index.names.copy()
+    df = df.reset_index()
+    for col in suppress_cols:
+        keep = df[df[count_col] >= threshold].copy()
+        small = df[df[count_col] < threshold].copy()
+        # avoid suppression if we don't need to
+        if small.empty:
+            break
+        small[col] = "grouped"
+        # reaggregate
+        grouped = (
+            small.groupby(full_index_cols, dropna=False)[count_col].sum().reset_index()
+        )
+        # bind suppressed rows with the ones that didn't need suppression
+        df = pd.concat([keep, grouped], ignore_index=True)
+    try:
+        assert df[df[count_col] < threshold].empty
+        return df.set_index(full_index_cols).sort_index()
+    except AssertionError:
+        raise ValueError(
+            f"Small numbers still present after reaggregating by {suppress_cols}. Add additional columns to suppress_cols"
+        )
 
 
 def run_detailed_results(
