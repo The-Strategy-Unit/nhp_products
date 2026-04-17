@@ -800,6 +800,7 @@ def main() -> int:
         "--agg-type",
         help="Which aggregation type to produce for detailed results",
         default="standard",
+        choices=["standard", "hrg"],
     )
 
     # Add mutually exclusive processing flags to match Polars implementation
