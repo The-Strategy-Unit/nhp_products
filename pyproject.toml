@@ -15,7 +15,7 @@ dependencies = [
     "azure-storage-blob>=12.24.0",
     # Data science core
     # "polars==1.34.0",
-    "polars-lts-cpu>=1.33.1", # For older CPUs that don't support avx, avx2, fma
+    # For older CPUs that don't support avx, avx2, fma
     "pandas>=2.2.3",
     "numpy>=2.1.3",
     "pyarrow>=18.1.0",
