@@ -308,22 +308,7 @@ def _process_inpatient_results(
         .astype(int)
     )
     detailed_beddays_principal = (
-        model_runs_df.loc[
-            (
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                "beddays",
-            ),
-            :,
-        ]
-        .sum()
-        .loc["mean"]
-        .astype(int)
+        model_runs_df.xs("beddays", level="measure").sum().loc["mean"].astype(int)
     )
 
     try:
@@ -461,7 +446,7 @@ def _process_outpatient_results(
     # Validate results
     detailed_attendances_principal = (
         op_model_runs_df.round(1)
-        .loc[(slice(None), slice(None), slice(None), slice(None), "attendances"), :]
+        .xs("attendances", level="measure")
         .sum()
         .astype(int)
         .loc["mean"]
@@ -515,21 +500,7 @@ def _validate_aae_metric(
         metric_label: Label for the measure in logs (e.g., "Ambulance", "Walk-in")
     """
     detailed_value = (
-        ae_model_runs_df.loc[
-            (
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                measure_name,
-            ),
-            :,
-        ]
-        .sum()
-        .loc["mean"]
-        .round(0)
+        ae_model_runs_df.xs(measure_name, level="measure").sum().loc["mean"].round(0)
     )
 
     default_value = (
