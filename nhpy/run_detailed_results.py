@@ -54,7 +54,7 @@ from azure.core.exceptions import (
 from tqdm import tqdm
 
 from nhpy import az, process_data, process_results
-from nhpy.config import ExitCodes
+from nhpy.config import DetailedResultsStandard, ExitCodes
 from nhpy.types import ProcessContext
 from nhpy.utils import (
     EnvironmentVariableError,
@@ -198,7 +198,10 @@ def age_groups(age: pd.Series) -> pd.Series:
 
 
 def _process_inpatient_results(
-    ctx: ProcessContext, output_dir: str, custom_age_groups: bool = False
+    ctx: ProcessContext,
+    output_dir: str,
+    ip_agg_cols: list[str],
+    custom_age_groups: bool = False,
 ) -> None:
     """
     Process inpatient detailed results.
@@ -285,16 +288,7 @@ def _process_inpatient_results(
     # Process model runs dictionary after the loop completes
     model_runs_df = process_data.process_model_runs_dict(
         model_runs,
-        columns=[
-            "sitetret",
-            "age_group",
-            "sex",
-            "pod",
-            "tretspef",
-            "sushrg",
-            "maternity_delivery_in_spell",
-            "measure",
-        ],
+        columns=ip_agg_cols + ["measure"],
     )
     logger.info(
         f"IP data processed into dataframe, memory usage: {get_memory_usage():.2f} MB"
@@ -703,6 +697,7 @@ def run_detailed_results(
     account_url: str | None = None,
     results_container: str | None = None,
     data_container: str | None = None,
+    agg_type: str = "standard",
 ) -> dict[str, str]:
     """
     Generate detailed results for a model scenario.
@@ -769,9 +764,14 @@ def run_detailed_results(
     # Track if we processed any new results
     processed_new_results = False
 
+    # Which type of detailed results to produce
+    if agg_type == "standard":
+        config = DetailedResultsStandard()
     # Process each type of results if they don't already exist
     if not ip_exists:
-        _process_inpatient_results(context, output_dir)
+        _process_inpatient_results(
+            context, output_dir, config.ip_agg_cols, config.custom_age_groups
+        )
         processed_new_results = True
 
     if not op_exists:
@@ -828,6 +828,11 @@ def main() -> int:
     parser.add_argument("--account-url", help="Azure Storage account URL")
     parser.add_argument("--results-container", help="Azure Storage container for results")
     parser.add_argument("--data-container", help="Azure Storage container for data")
+    parser.add_argument(
+        "--agg-type",
+        help="Which aggregation type to produce for detailed results",
+        default="standard",
+    )
 
     # Add mutually exclusive processing flags to match Polars implementation
     processing_group = parser.add_mutually_exclusive_group()
@@ -884,6 +889,7 @@ def main() -> int:
             account_url=args.account_url,
             results_container=args.results_container,
             data_container=args.data_container,
+            agg_type=args.agg_type,
         )
 
         logger.info("🎉 Detailed results generated successfully!")

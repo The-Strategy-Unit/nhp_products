@@ -75,3 +75,42 @@ class EmptyContainerError(Exception):
             "exists but contains no blobs"
         )
         super().__init__(self.message)
+
+
+class DetailedResultsConfig:
+    def __init__(
+        self,
+        ip_agg_cols: list[str],
+        op_agg_cols: list[str],
+        aae_agg_cols: list[str],
+        custom_age_groups: bool,
+    ):
+        self.ip_agg_cols = ip_agg_cols
+        self.op_agg_cols = op_agg_cols
+        self.aae_agg_cols = aae_agg_cols
+        self.custom_age_groups = custom_age_groups
+
+
+class DetailedResultsStandard(DetailedResultsConfig):
+    def __init__(self, custom_age_groups: bool = False):
+        super().__init__(
+            ip_agg_cols=[
+                "sitetret",
+                "age_group",
+                "sex",
+                "pod",
+                "tretspef",
+                "los_group",
+                "maternity_delivery_in_spell",
+            ],
+            op_agg_cols=["sitetret", "pod", "age_group", "tretspef"],
+            aae_agg_cols=[
+                "sitetret",
+                "pod",
+                "age_group",
+                "attendance_category",
+                "aedepttype",
+                "acuity",
+            ],
+            custom_age_groups=custom_age_groups,
+        )
