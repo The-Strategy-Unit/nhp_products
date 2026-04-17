@@ -54,7 +54,12 @@ from azure.core.exceptions import (
 from tqdm import tqdm
 
 from nhpy import az, process_data, process_results
-from nhpy.config import DetailedResultsStandard, ExitCodes
+from nhpy.config import (
+    DetailedResultsConfig,
+    DetailedResultsHRG,
+    DetailedResultsStandard,
+    ExitCodes,
+)
 from nhpy.types import ProcessContext
 from nhpy.utils import (
     EnvironmentVariableError,
@@ -173,35 +178,8 @@ def _check_results_exist(output_dir: str, scenario_name: str, activity_type: str
     return False
 
 
-def age_groups(age: pd.Series) -> pd.Series:
-    """Cut age into groups
-
-    Takes a pandas Series of age's and cut's into discrete intervals
-
-    :param age: a Series of ages
-    :type age: pandas.Series
-
-    :returns: a Series of age groups
-    :rtype: pandas.Series
-    """
-    return pd.cut(
-        age.fillna(-1),
-        [-1, 0, 1, 18, 1000],
-        right=False,
-        labels=[
-            "Unknown",
-            "0",
-            "1-17",
-            "18+",
-        ],
-    ).astype(str)
-
-
 def _process_inpatient_results(
-    ctx: ProcessContext,
-    output_dir: str,
-    ip_agg_cols: list[str],
-    custom_age_groups: bool = False,
+    ctx: ProcessContext, output_dir: str, config: DetailedResultsConfig
 ) -> None:
     """
     Process inpatient detailed results.
@@ -239,8 +217,8 @@ def _process_inpatient_results(
         activity_type="ip",
         year=baseline_year,
     )
-    if custom_age_groups:
-        original_df["age_group"] = age_groups(original_df["age"])
+    if config.custom_age_groups:
+        original_df["age_group"] = config.age_groups(original_df["age"])
 
     # Pre-allocate dictionary
     model_runs = {}
@@ -271,7 +249,7 @@ def _process_inpatient_results(
 
         # Use the pre-created reference dataframe
         merged = reference_df.merge(df, on="rn", how="inner")
-        results = process_data.process_ip_detailed_results(merged, ip_agg_cols)
+        results = process_data.process_ip_detailed_results(merged, config.ip_agg_cols)
 
         # More efficient dictionary update
         results_dict = results.to_dict()
@@ -288,7 +266,7 @@ def _process_inpatient_results(
     # Process model runs dictionary after the loop completes
     model_runs_df = process_data.process_model_runs_dict(
         model_runs,
-        columns=ip_agg_cols + ["measure"],
+        columns=config.ip_agg_cols + ["measure"],
     )
     logger.info(
         f"IP data processed into dataframe, memory usage: {get_memory_usage():.2f} MB"
@@ -757,11 +735,11 @@ def run_detailed_results(
     # Which type of detailed results to produce
     if agg_type == "standard":
         config = DetailedResultsStandard()
+    if agg_type == "hrg":
+        config = DetailedResultsHRG()
     # Process each type of results if they don't already exist
     if not ip_exists:
-        _process_inpatient_results(
-            context, output_dir, config.ip_agg_cols, config.custom_age_groups
-        )
+        _process_inpatient_results(context, output_dir, config)
         processed_new_results = True
 
     if not op_exists:
