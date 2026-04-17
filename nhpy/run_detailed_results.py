@@ -198,8 +198,7 @@ def age_groups(age: pd.Series) -> pd.Series:
 
 
 def _process_inpatient_results(
-    ctx: ProcessContext,
-    output_dir: str,
+    ctx: ProcessContext, output_dir: str, custom_age_groups: bool = False
 ) -> None:
     """
     Process inpatient detailed results.
@@ -237,8 +236,8 @@ def _process_inpatient_results(
         activity_type="ip",
         year=baseline_year,
     )
-    # overwrite age_group
-    original_df["age_group"] = age_groups(original_df["age"])
+    if custom_age_groups:
+        original_df["age_group"] = age_groups(original_df["age"])
 
     # Pre-allocate dictionary
     model_runs = {}
