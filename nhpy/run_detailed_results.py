@@ -271,7 +271,7 @@ def _process_inpatient_results(
 
         # Use the pre-created reference dataframe
         merged = reference_df.merge(df, on="rn", how="inner")
-        results = process_data.process_ip_detailed_results(merged)
+        results = process_data.process_ip_detailed_results(merged, ip_agg_cols)
 
         # More efficient dictionary update
         results_dict = results.to_dict()
@@ -332,8 +332,7 @@ def _process_inpatient_results(
 
 
 def _process_outpatient_results(
-    context: ProcessContext,
-    output_dir: str,
+    context: ProcessContext, output_dir: str, op_agg_cols: list[str]
 ) -> None:
     """
     Process outpatient detailed results.
@@ -400,7 +399,7 @@ def _process_outpatient_results(
 
         # Use the pre-created reference dataframe
         merged = reference_df.merge(df, on="rn", how="inner")
-        results = process_data.process_op_detailed_results(merged)
+        results = process_data.process_op_detailed_results(merged, op_agg_cols)
 
         # Load conversion data with batch functionality
         df_conv = az.load_model_run_results_file(
@@ -416,7 +415,7 @@ def _process_outpatient_results(
             },
         )
 
-        df_conv = process_data.process_op_converted_from_ip(df_conv)
+        df_conv = process_data.process_op_converted_from_ip(df_conv, op_agg_cols)
         results = process_data.combine_converted_with_main_results(df_conv, results)
 
         # More efficient dictionary update
@@ -433,7 +432,7 @@ def _process_outpatient_results(
 
     # Process results
     op_model_runs_df = process_data.process_model_runs_dict(
-        op_model_runs, columns=["sitetret", "pod", "age_group", "tretspef", "measure"]
+        op_model_runs, columns=op_agg_cols + ["measure"]
     )
 
     # Validate results
@@ -513,8 +512,7 @@ def _validate_aae_metric(
 
 
 def _process_aae_results(
-    context: ProcessContext,
-    output_dir: str,
+    context: ProcessContext, output_dir: str, aae_agg_cols: list[str]
 ) -> None:
     """
     Process A&E detailed results.
@@ -581,7 +579,7 @@ def _process_aae_results(
 
         # Use the pre-created reference dataframe
         merged = reference_df.merge(df, on="rn", how="inner")
-        results = process_data.process_aae_results(merged)
+        results = process_data.process_aae_results(merged, aae_agg_cols)
 
         # Load conversion data with batch functionality
         df_conv = az.load_model_run_results_file(
@@ -597,7 +595,7 @@ def _process_aae_results(
             },
         )
 
-        df_conv = process_data.process_aae_converted_from_ip(df_conv)
+        df_conv = process_data.process_aae_converted_from_ip(df_conv, aae_agg_cols)
         results = process_data.combine_converted_with_main_results(df_conv, results)
 
         # More efficient dictionary update
@@ -615,15 +613,7 @@ def _process_aae_results(
     # Process results
     ae_model_runs_df = process_data.process_model_runs_dict(
         ae_model_runs,
-        columns=[
-            "sitetret",
-            "pod",
-            "age_group",
-            "attendance_category",
-            "aedepttype",
-            "acuity",
-            "measure",
-        ],
+        columns=aae_agg_cols + ["measure"],
     )
 
     # Validate results
@@ -775,11 +765,11 @@ def run_detailed_results(
         processed_new_results = True
 
     if not op_exists:
-        _process_outpatient_results(context, output_dir)
+        _process_outpatient_results(context, output_dir, config.op_agg_cols)
         processed_new_results = True
 
     if not ae_exists:
-        _process_aae_results(context, output_dir)
+        _process_aae_results(context, output_dir, config.aae_agg_cols)
         processed_new_results = True
 
     if processed_new_results:
