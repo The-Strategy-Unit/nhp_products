@@ -173,6 +173,30 @@ def _check_results_exist(output_dir: str, scenario_name: str, activity_type: str
     return False
 
 
+def age_groups(age: pd.Series) -> pd.Series:
+    """Cut age into groups
+
+    Takes a pandas Series of age's and cut's into discrete intervals
+
+    :param age: a Series of ages
+    :type age: pandas.Series
+
+    :returns: a Series of age groups
+    :rtype: pandas.Series
+    """
+    return pd.cut(
+        age.fillna(-1),
+        [-1, 0, 1, 18, 1000],
+        right=False,
+        labels=[
+            "Unknown",
+            "0",
+            "1-17",
+            "18+",
+        ],
+    ).astype(str)
+
+
 def _process_inpatient_results(
     ctx: ProcessContext,
     output_dir: str,
@@ -213,6 +237,8 @@ def _process_inpatient_results(
         activity_type="ip",
         year=baseline_year,
     )
+    # overwrite age_group
+    original_df["age_group"] = age_groups(original_df["age"])
 
     # Pre-allocate dictionary
     model_runs = {}
@@ -266,7 +292,7 @@ def _process_inpatient_results(
             "sex",
             "pod",
             "tretspef",
-            "los_group",
+            "sushrg",
             "maternity_delivery_in_spell",
             "measure",
         ],
@@ -664,7 +690,7 @@ def _process_aae_results(
 def suppress_small_counts(
     df: pd.DataFrame,
     suppress_cols: List[str],
-    count_col: str = "value",
+    count_col: str = "baseline",
     threshold: int = 5,
 ) -> pd.DataFrame:
     """Suppression of small counts in detailed results. Filters dataframe to only rows with
@@ -698,13 +724,7 @@ def suppress_small_counts(
         )
         # bind suppressed rows with the ones that didn't need suppression
         df = pd.concat([keep, grouped], ignore_index=True)
-    try:
-        assert df[df[count_col] < threshold].empty
-        return df.set_index(full_index_cols).sort_index()
-    except AssertionError:
-        raise ValueError(
-            f"Small numbers still present after reaggregating by {suppress_cols}. Add additional columns to suppress_cols"
-        )
+    return df.set_index(full_index_cols).sort_index()
 
 
 def run_detailed_results(

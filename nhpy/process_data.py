@@ -146,7 +146,7 @@ def process_ip_detailed_results(data: pd.DataFrame) -> pd.DataFrame:
             "sex",
             "pod",
             "tretspef",
-            "los_group",
+            "sushrg",
             "maternity_delivery_in_spell",
         ],
         dropna=False,
@@ -171,7 +171,7 @@ def process_ip_detailed_results(data: pd.DataFrame) -> pd.DataFrame:
             "sex",
             "pod",
             "tretspef",
-            "los_group",
+            "sushrg",
             "maternity_delivery_in_spell",
             "measure",
         ]
