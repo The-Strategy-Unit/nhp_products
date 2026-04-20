@@ -7,6 +7,8 @@ single source of truth for error handling and status codes throughout the
 application.
 """
 
+import pandas as pd
+
 
 # %%
 # Exit codes
@@ -75,3 +77,96 @@ class EmptyContainerError(Exception):
             "exists but contains no blobs"
         )
         super().__init__(self.message)
+
+
+class DetailedResultsConfig:
+    def __init__(
+        self,
+        ip_agg_cols: list[str],
+        op_agg_cols: list[str],
+        aae_agg_cols: list[str],
+        custom_age_groups: bool,
+    ):
+        self.ip_agg_cols = ip_agg_cols
+        self.op_agg_cols = op_agg_cols
+        self.aae_agg_cols = aae_agg_cols
+        self.custom_age_groups = custom_age_groups
+
+    @staticmethod
+    def age_groups(age: pd.Series) -> pd.Series:
+        """Implemented in subclasses"""
+        raise NotImplementedError()
+
+
+class DetailedResultsStandard(DetailedResultsConfig):
+    def __init__(self, custom_age_groups: bool = False):
+        super().__init__(
+            ip_agg_cols=[
+                "sitetret",
+                "age_group",
+                "sex",
+                "pod",
+                "tretspef",
+                "los_group",
+                "maternity_delivery_in_spell",
+            ],
+            op_agg_cols=["sitetret", "pod", "age_group", "tretspef"],
+            aae_agg_cols=[
+                "sitetret",
+                "pod",
+                "age_group",
+                "attendance_category",
+                "aedepttype",
+                "acuity",
+            ],
+            custom_age_groups=custom_age_groups,
+        )
+
+
+class DetailedResultsHRG(DetailedResultsConfig):
+    def __init__(self, custom_age_groups: bool = True):
+        super().__init__(
+            ip_agg_cols=[
+                "sitetret",
+                "age_group",
+                "sex",
+                "pod",
+                "tretspef",
+                "sushrg",
+                "maternity_delivery_in_spell",
+            ],
+            op_agg_cols=["sitetret", "pod", "age_group", "tretspef"],
+            aae_agg_cols=[
+                "sitetret",
+                "pod",
+                "age_group",
+                "attendance_category",
+                "aedepttype",
+                "acuity",
+            ],
+            custom_age_groups=custom_age_groups,
+        )
+
+    @staticmethod
+    def age_groups(age: pd.Series) -> pd.Series:
+        """Cut age into groups
+
+        Takes a pandas Series of age's and cut's into discrete intervals
+
+        :param age: a Series of ages
+        :type age: pandas.Series
+
+        :returns: a Series of age groups
+        :rtype: pandas.Series
+        """
+        return pd.cut(
+            age.fillna(-1),
+            [-1, 0, 1, 18, 1000],
+            right=False,
+            labels=[
+                "Unknown",
+                "0",
+                "1-17",
+                "18+",
+            ],
+        ).astype(str)

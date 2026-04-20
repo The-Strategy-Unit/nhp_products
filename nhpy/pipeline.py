@@ -368,7 +368,12 @@ def main() -> int:
         "-r", "--results-container", help="Azure Storage container for results"
     )
     parser.add_argument("-d", "--data-container", help="Azure Storage container for data")
-
+    parser.add_argument(
+        "--agg-type",
+        help="Which aggregation type to produce for detailed results",
+        default="standard",
+        choices=["standard", "hrg"],
+    )
     args = parser.parse_args()
 
     try:
@@ -438,6 +443,7 @@ def main() -> int:
             account_url=args.account_url,
             results_container=args.results_container,
             data_container=args.data_container,
+            agg_type=args.agg_type,
         )
 
         logger.info(f"{SUCCESS_COLOR}Pipeline completed successfully!{RESET}")

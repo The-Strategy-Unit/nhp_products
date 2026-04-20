@@ -37,9 +37,13 @@ import gc
 import os
 import sys
 import time
+from ast import Assert
+from contextlib import suppress
 from logging import INFO
 from pathlib import Path
+from typing import List
 
+import pandas as pd
 import psutil
 from azure.core.exceptions import (
     ClientAuthenticationError,
@@ -50,7 +54,12 @@ from azure.core.exceptions import (
 from tqdm import tqdm
 
 from nhpy import az, process_data, process_results
-from nhpy.config import ExitCodes
+from nhpy.config import (
+    DetailedResultsConfig,
+    DetailedResultsHRG,
+    DetailedResultsStandard,
+    ExitCodes,
+)
 from nhpy.types import ProcessContext
 from nhpy.utils import (
     EnvironmentVariableError,
@@ -170,8 +179,7 @@ def _check_results_exist(output_dir: str, scenario_name: str, activity_type: str
 
 
 def _process_inpatient_results(
-    ctx: ProcessContext,
-    output_dir: str,
+    ctx: ProcessContext, output_dir: str, config: DetailedResultsConfig
 ) -> None:
     """
     Process inpatient detailed results.
@@ -209,6 +217,8 @@ def _process_inpatient_results(
         activity_type="ip",
         year=baseline_year,
     )
+    if config.custom_age_groups:
+        original_df["age_group"] = config.age_groups(original_df["age"])
 
     # Pre-allocate dictionary
     model_runs = {}
@@ -239,7 +249,7 @@ def _process_inpatient_results(
 
         # Use the pre-created reference dataframe
         merged = reference_df.merge(df, on="rn", how="inner")
-        results = process_data.process_ip_detailed_results(merged)
+        results = process_data.process_ip_detailed_results(merged, config.ip_agg_cols)
 
         # More efficient dictionary update
         results_dict = results.to_dict()
@@ -256,16 +266,7 @@ def _process_inpatient_results(
     # Process model runs dictionary after the loop completes
     model_runs_df = process_data.process_model_runs_dict(
         model_runs,
-        columns=[
-            "sitetret",
-            "age_group",
-            "sex",
-            "pod",
-            "tretspef",
-            "los_group",
-            "maternity_delivery_in_spell",
-            "measure",
-        ],
+        columns=config.ip_agg_cols + ["measure"],
     )
     logger.info(
         f"IP data processed into dataframe, memory usage: {get_memory_usage():.2f} MB"
@@ -278,22 +279,7 @@ def _process_inpatient_results(
         .astype(int)
     )
     detailed_beddays_principal = (
-        model_runs_df.loc[
-            (
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                "beddays",
-            ),
-            :,
-        ]
-        .sum()
-        .loc["mean"]
-        .astype(int)
+        model_runs_df.xs("beddays", level="measure").sum().loc["mean"].astype(int)
     )
 
     try:
@@ -324,8 +310,7 @@ def _process_inpatient_results(
 
 
 def _process_outpatient_results(
-    context: ProcessContext,
-    output_dir: str,
+    context: ProcessContext, output_dir: str, op_agg_cols: list[str]
 ) -> None:
     """
     Process outpatient detailed results.
@@ -392,7 +377,7 @@ def _process_outpatient_results(
 
         # Use the pre-created reference dataframe
         merged = reference_df.merge(df, on="rn", how="inner")
-        results = process_data.process_op_detailed_results(merged)
+        results = process_data.process_op_detailed_results(merged, op_agg_cols)
 
         # Load conversion data with batch functionality
         df_conv = az.load_model_run_results_file(
@@ -408,7 +393,7 @@ def _process_outpatient_results(
             },
         )
 
-        df_conv = process_data.process_op_converted_from_ip(df_conv)
+        df_conv = process_data.process_op_converted_from_ip(df_conv, op_agg_cols)
         results = process_data.combine_converted_with_main_results(df_conv, results)
 
         # More efficient dictionary update
@@ -425,13 +410,13 @@ def _process_outpatient_results(
 
     # Process results
     op_model_runs_df = process_data.process_model_runs_dict(
-        op_model_runs, columns=["sitetret", "pod", "age_group", "tretspef", "measure"]
+        op_model_runs, columns=op_agg_cols + ["measure"]
     )
 
     # Validate results
     detailed_attendances_principal = (
         op_model_runs_df.round(1)
-        .loc[(slice(None), slice(None), slice(None), slice(None), "attendances"), :]
+        .xs("attendances", level="measure")
         .sum()
         .astype(int)
         .loc["mean"]
@@ -485,21 +470,7 @@ def _validate_aae_metric(
         metric_label: Label for the measure in logs (e.g., "Ambulance", "Walk-in")
     """
     detailed_value = (
-        ae_model_runs_df.loc[
-            (
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                slice(None),
-                measure_name,
-            ),
-            :,
-        ]
-        .sum()
-        .loc["mean"]
-        .round(0)
+        ae_model_runs_df.xs(measure_name, level="measure").sum().loc["mean"].round(0)
     )
 
     default_value = (
@@ -519,8 +490,7 @@ def _validate_aae_metric(
 
 
 def _process_aae_results(
-    context: ProcessContext,
-    output_dir: str,
+    context: ProcessContext, output_dir: str, aae_agg_cols: list[str]
 ) -> None:
     """
     Process A&E detailed results.
@@ -587,7 +557,7 @@ def _process_aae_results(
 
         # Use the pre-created reference dataframe
         merged = reference_df.merge(df, on="rn", how="inner")
-        results = process_data.process_aae_results(merged)
+        results = process_data.process_aae_results(merged, aae_agg_cols)
 
         # Load conversion data with batch functionality
         df_conv = az.load_model_run_results_file(
@@ -603,7 +573,7 @@ def _process_aae_results(
             },
         )
 
-        df_conv = process_data.process_aae_converted_from_ip(df_conv)
+        df_conv = process_data.process_aae_converted_from_ip(df_conv, aae_agg_cols)
         results = process_data.combine_converted_with_main_results(df_conv, results)
 
         # More efficient dictionary update
@@ -621,15 +591,7 @@ def _process_aae_results(
     # Process results
     ae_model_runs_df = process_data.process_model_runs_dict(
         ae_model_runs,
-        columns=[
-            "sitetret",
-            "pod",
-            "age_group",
-            "attendance_category",
-            "aedepttype",
-            "acuity",
-            "measure",
-        ],
+        columns=aae_agg_cols + ["measure"],
     )
 
     # Validate results
@@ -657,12 +619,53 @@ def _process_aae_results(
     )
 
 
+def suppress_small_counts(
+    df: pd.DataFrame,
+    suppress_cols: List[str],
+    count_col: str = "baseline",
+    threshold: int = 5,
+) -> pd.DataFrame:
+    """Suppression of small counts in detailed results. Filters dataframe to only rows with
+    small numbers, then groups together values in specified columns and re-aggregates.
+
+    Args:
+        df (pd.DataFrame): Processed detailed results
+        suppress_cols (List[str]): List of columns to use in suppressing small numbers,
+        in order of preference.
+        count_col (str, optional): The name of the column with the values to be suppressed
+        and aggregated.
+        Defaults to "value".
+        threshold (int, optional): Maximum count allowed in the count_col
+
+    Returns:
+        pd.DataFrame: Processed detailed results with small counts aggregated together
+    """
+    logger.info("Beginning suppression...")
+    full_index_cols = df.index.names.copy()
+    df = df.reset_index()
+    for col in suppress_cols:
+        keep = df[df[count_col] >= threshold].copy()
+        small = df[df[count_col] < threshold].copy()
+        # avoid suppression if we don't need to
+        if small.empty:
+            break
+        small[col] = "grouped"
+        # reaggregate
+        grouped = (
+            small.groupby(full_index_cols, dropna=False)[count_col].sum().reset_index()
+        )
+        # bind suppressed rows with the ones that didn't need suppression
+        df = pd.concat([keep, grouped], ignore_index=True)
+    return df.set_index(full_index_cols).sort_index()
+
+
 def run_detailed_results(
     results_path: str,
     output_dir: str | None = None,
     account_url: str | None = None,
     results_container: str | None = None,
     data_container: str | None = None,
+    agg_type: str = "standard",
 ) -> dict[str, str]:
     """
     Generate detailed results for a model scenario.
@@ -729,17 +732,22 @@ def run_detailed_results(
     # Track if we processed any new results
     processed_new_results = False
 
+    # Which type of detailed results to produce
+    if agg_type == "standard":
+        config = DetailedResultsStandard()
+    if agg_type == "hrg":
+        config = DetailedResultsHRG()
     # Process each type of results if they don't already exist
     if not ip_exists:
-        _process_inpatient_results(context, output_dir)
+        _process_inpatient_results(context, output_dir, config)
         processed_new_results = True
 
     if not op_exists:
-        _process_outpatient_results(context, output_dir)
+        _process_outpatient_results(context, output_dir, config.op_agg_cols)
         processed_new_results = True
 
     if not ae_exists:
-        _process_aae_results(context, output_dir)
+        _process_aae_results(context, output_dir, config.aae_agg_cols)
         processed_new_results = True
 
     if processed_new_results:
@@ -788,6 +796,12 @@ def main() -> int:
     parser.add_argument("--account-url", help="Azure Storage account URL")
     parser.add_argument("--results-container", help="Azure Storage container for results")
     parser.add_argument("--data-container", help="Azure Storage container for data")
+    parser.add_argument(
+        "--agg-type",
+        help="Which aggregation type to produce for detailed results",
+        default="standard",
+        choices=["standard", "hrg"],
+    )
 
     # Add mutually exclusive processing flags to match Polars implementation
     processing_group = parser.add_mutually_exclusive_group()
@@ -844,6 +858,7 @@ def main() -> int:
             account_url=args.account_url,
             results_container=args.results_container,
             data_container=args.data_container,
+            agg_type=args.agg_type,
         )
 
         logger.info("🎉 Detailed results generated successfully!")

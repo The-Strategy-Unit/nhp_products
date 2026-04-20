@@ -113,13 +113,15 @@ def process_model_runs_dict(
     return model_runs_df
 
 
-def process_ip_detailed_results(data: pd.DataFrame) -> pd.DataFrame:
+def process_ip_detailed_results(
+    data: pd.DataFrame, ip_agg_cols: list[str]
+) -> pd.DataFrame:
     """Process the IP detailed results, adding pod and age_group, and grouping by
-    sitetret, age_group, sex, pod, tretspef, los_group, maternity_delivery_in_spell,
-    and measure
+    specified columns
 
     Args:
         data: the IP activity in each Monte Carlo simulation
+        ip_agg_cols: list of column names to aggregate by
 
     Returns:
         The processed and aggregated data
@@ -140,15 +142,7 @@ def process_ip_detailed_results(data: pd.DataFrame) -> pd.DataFrame:
     data = process_ip_results(data, los_groups_detailed)
     # Explicitly cast the result to DataFrame to satisfy type checking
     grouped_data = data.groupby(
-        [
-            "sitetret",
-            "age_group",
-            "sex",
-            "pod",
-            "tretspef",
-            "los_group",
-            "maternity_delivery_in_spell",
-        ],
+        ip_agg_cols,
         dropna=False,
     )[["admissions", "beddays", "procedures"]].sum()
     data = pd.DataFrame(grouped_data)
@@ -164,28 +158,20 @@ def process_ip_detailed_results(data: pd.DataFrame) -> pd.DataFrame:
     )
     # remove any row where the measure value is 0
     data = data[data["value"] > 0].reset_index()
-    data = data.groupby(
-        [
-            "sitetret",
-            "age_group",
-            "sex",
-            "pod",
-            "tretspef",
-            "los_group",
-            "maternity_delivery_in_spell",
-            "measure",
-        ]
-    ).sum()
+    data = data.groupby(ip_agg_cols + ["measure"]).sum()
 
     return data
 
 
-def process_op_detailed_results(data: pd.DataFrame) -> pd.DataFrame:
+def process_op_detailed_results(
+    data: pd.DataFrame, op_agg_cols: list[str]
+) -> pd.DataFrame:
     """Process the OP detailed results, adding pod and age_group, and grouping by
-    sitetret, age_group, sex, pod, tretspef, and measure
+    specified columns
 
     Args:
         data: the IP activity in each Monte Carlo simulation
+        op_agg_cols: list of column names to aggregate by
 
     Returns:
         The processed and aggregated data
@@ -197,9 +183,7 @@ def process_op_detailed_results(data: pd.DataFrame) -> pd.DataFrame:
     grouped_data = (
         data.drop(["attendances", "tele_attendances"], axis="columns")
         .merge(measures, on="rn")
-        .groupby(
-            ["sitetret", "pod", "age_group", "tretspef", "measure"],
-        )[["value"]]
+        .groupby(op_agg_cols + ["measure"])[["value"]]
         .sum()
         .sort_index()
     )
@@ -207,12 +191,13 @@ def process_op_detailed_results(data: pd.DataFrame) -> pd.DataFrame:
     return data
 
 
-def process_op_converted_from_ip(data: pd.DataFrame) -> pd.Series:
+def process_op_converted_from_ip(data: pd.DataFrame, op_agg_cols: list[str]) -> pd.Series:
     """Process the OP activity converted from IP, adding pod and age_group, and
-    grouping by sitetret, age_group, sex, pod, tretspef, and measure.
+    grouping by specified columns
 
     Args:
         data: the OP activity converted from IP in each Monte Carlo simulation
+        op_agg_cols: list of column names to aggregate by
 
     Returns:
         The processed and aggregated data
@@ -224,7 +209,7 @@ def process_op_converted_from_ip(data: pd.DataFrame) -> pd.Series:
     data["measure"] = "attendances"
     return (
         data.rename(columns={"attendances": "value"})
-        .groupby(["sitetret", "pod", "age_group", "tretspef", "measure"])["value"]
+        .groupby(op_agg_cols + ["measure"])["value"]
         .sum()
     )
 
@@ -257,13 +242,13 @@ def combine_converted_with_main_results(
     return result
 
 
-def process_aae_results(data: pd.DataFrame) -> pd.DataFrame:
+def process_aae_results(data: pd.DataFrame, aae_agg_cols: list[str]) -> pd.DataFrame:
     """Process the AAE detailed results, adding pod and age_group,
-    and grouping by sitetret, pod, age_group, attendance_category,
-    aedepttype, acuity, and measure
+    and grouping by specified columns
 
     Args:
         data: the AAE activity in each Monte Carlo simulation
+        aae_agg_cols: list of column names to aggregate by
 
     Returns:
         The processed and aggregated data
@@ -273,27 +258,19 @@ def process_aae_results(data: pd.DataFrame) -> pd.DataFrame:
     data.loc[data["is_ambulance"], "measure"] = "ambulance"
 
     # Explicitly cast the result to DataFrame to satisfy type checking
-    grouped_data = data.groupby(
-        [
-            "sitetret",
-            "pod",
-            "age_group",
-            "attendance_category",
-            "aedepttype",
-            "acuity",
-            "measure",
-        ]
-    )[["arrivals"]].sum()
+    grouped_data = data.groupby(aae_agg_cols + ["measure"])[["arrivals"]].sum()
     return pd.DataFrame(grouped_data)
 
 
-def process_aae_converted_from_ip(data: pd.DataFrame) -> pd.Series:
+def process_aae_converted_from_ip(
+    data: pd.DataFrame, aae_agg_cols: list[str]
+) -> pd.Series:
     """Process the AAE SDEC activity converted from IP, adding pod and age_group,
-    and grouping by sitetret, age_group, pod, aedepttype, attendance_category, acuity
-    and measure.
+    and grouping by specified columns.
 
     Args:
         data: the AAE SDEC activity converted from IP in each Monte Carlo simulation
+        aae_agg_cols: list of column names to aggregate by
 
     Returns:
         The processed and aggregated data
@@ -303,17 +280,7 @@ def process_aae_converted_from_ip(data: pd.DataFrame) -> pd.Series:
     data["pod"] = "aae_type-05"
     data = data.rename(columns={"group": "measure"})
     # Group the data and return a Series
-    result_series = data.groupby(
-        [
-            "sitetret",
-            "pod",
-            "age_group",
-            "attendance_category",
-            "aedepttype",
-            "acuity",
-            "measure",
-        ]
-    )["arrivals"].sum()
+    result_series = data.groupby(aae_agg_cols + ["measure"])["arrivals"].sum()
 
     return result_series
 
