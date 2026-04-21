@@ -129,7 +129,6 @@ class DetailedResultsHRG(DetailedResultsConfig):
             ip_agg_cols=[
                 "sitetret",
                 "age_group",
-                "sex",
                 "pod",
                 "tretspef",
                 "sushrg",

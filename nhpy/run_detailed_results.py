@@ -642,21 +642,20 @@ def suppress_small_counts(
     """
     logger.info("Beginning suppression...")
     full_index_cols = df.index.names.copy()
-    df = df.reset_index()
     for col in suppress_cols:
+        df = df.reset_index()
         keep = df[df[count_col] >= threshold].copy()
         small = df[df[count_col] < threshold].copy()
         # avoid suppression if we don't need to
         if small.empty:
+            df = df.groupby(full_index_cols).sum()
             break
         small[col] = "grouped"
         # reaggregate
-        grouped = (
-            small.groupby(full_index_cols, dropna=False)[count_col].sum().reset_index()
-        )
+        grouped = small.groupby(full_index_cols, dropna=False).sum().reset_index()
         # bind suppressed rows with the ones that didn't need suppression
-        df = pd.concat([keep, grouped], ignore_index=True)
-    return df.set_index(full_index_cols).sort_index()
+        df = pd.concat([keep, grouped], ignore_index=True).groupby(full_index_cols).sum()
+    return df.sort_index().sort_index(axis=1)
 
 
 def run_detailed_results(
