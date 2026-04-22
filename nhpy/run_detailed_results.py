@@ -337,7 +337,7 @@ def _process_outpatient_results(
             },
         )
 
-        df_conv = process_data.process_op_converted_from_ip(df_conv, config.op_agg_cols)
+        df_conv = process_data.process_op_converted_from_ip(df_conv, config)
         results = process_data.combine_converted_with_main_results(df_conv, results)
 
         # More efficient dictionary update
@@ -519,7 +519,7 @@ def _process_aae_results(
             },
         )
 
-        df_conv = process_data.process_aae_converted_from_ip(df_conv, config.aae_agg_cols)
+        df_conv = process_data.process_aae_converted_from_ip(df_conv, config)
         results = process_data.combine_converted_with_main_results(df_conv, results)
 
         # More efficient dictionary update
