@@ -102,7 +102,7 @@ def _check_results_exist(output_dir: str, scenario_name: str, activity_type: str
     Args:
         output_dir: Directory where output files are stored
         scenario_name: Name of the scenario
-        activity_type: Type of activity (ip, op, ae)
+        activity_type: Type of activity (ip, op, aae)
 
     Returns:
         bool: True if both CSV and Parquet files exist, False otherwise
@@ -447,7 +447,7 @@ def _process_aae_results(
     scenario_name = context["scenario_name"]
 
     # Check if output files already exist
-    if _check_results_exist(output_dir, scenario_name, "ae"):
+    if _check_results_exist(output_dir, scenario_name, "aae"):
         logger.info("Skipping A&E processing as results already exist")
         return
 
@@ -605,7 +605,7 @@ def run_detailed_results(
     # Check for existing result files
     ip_exists = _check_results_exist(output_dir, scenario_name, "ip")
     op_exists = _check_results_exist(output_dir, scenario_name, "op")
-    ae_exists = _check_results_exist(output_dir, scenario_name, "ae")
+    ae_exists = _check_results_exist(output_dir, scenario_name, "aae")
 
     # Track if we processed any new results
     processed_new_results = False
@@ -690,7 +690,7 @@ def main() -> int:
         "--op", action="store_true", help="Check/process only outpatient results"
     )
     processing_group.add_argument(
-        "--ae", action="store_true", help="Check/process only A&E results"
+        "--aae", action="store_true", help="Check/process only A&E results"
     )
 
     args = parser.parse_args()
@@ -707,7 +707,7 @@ def main() -> int:
 
     try:
         # First, check if specific result type was requested
-        if args.ip or args.op or args.ae:
+        if args.ip or args.op or args.aae:
             # Get output directory and scenario name first
             output_dir = args.output_dir
 
@@ -717,7 +717,7 @@ def main() -> int:
             scenario_name = context["scenario_name"]
 
             # Check for existing files for the requested type
-            activity_type = "ip" if args.ip else "op" if args.op else "ae"
+            activity_type = "ip" if args.ip else "op" if args.op else "aae"
             if _check_results_exist(output_dir, scenario_name, activity_type):
                 file_prefix = f"{scenario_name}_detailed_{activity_type}_results"
                 results_base = f"{output_dir}/{file_prefix}"
@@ -743,7 +743,7 @@ def main() -> int:
             logger.info(f"IP results: {result_files['ip_csv']}")
         elif args.op:
             logger.info(f"OP results: {result_files['op_csv']}")
-        elif args.ae:
+        elif args.aae:
             logger.info(f"A&E results: {result_files['aae_csv']}")
         else:
             logger.info(f"Files generated: {len(result_files)}")
