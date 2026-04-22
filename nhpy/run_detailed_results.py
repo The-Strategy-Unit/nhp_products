@@ -37,8 +37,6 @@ import gc
 import os
 import sys
 import time
-from ast import Assert
-from contextlib import suppress
 from logging import INFO
 from pathlib import Path
 from typing import List
@@ -66,6 +64,7 @@ from nhpy.utils import (
     _load_dotenv_file,
     configure_logging,
     get_logger,
+    initialise_connections_and_params,
 )
 
 # %%
@@ -96,64 +95,6 @@ def get_memory_usage():
 _load_dotenv_file(interpolate=False)
 
 
-def _initialise_connections_and_params(
-    results_path: str,
-    account_url: str,
-    results_container: str,
-    data_container: str,
-) -> ProcessContext:
-    """
-    Initialize connections and load parameters from the aggregated results.
-
-    Args:
-        results_path: Path to the aggregated model results
-        account_url: Azure Storage account URL
-        results_container: Azure Storage container for results
-        data_container: Azure Storage container for data
-
-    Returns:
-        dict containing all necessary objects and parameters for processing
-
-    Raises:
-        FileNotFoundError: If results folder or data version not found
-    """
-    # Connections and params
-    results_connection = az.connect_to_container(account_url, results_container)
-    data_connection = az.connect_to_container(account_url, data_container)
-    params = az.load_agg_params(results_connection, results_path)
-
-    # Get info from the results file
-    scenario_name = params["scenario"]
-    trust = params["dataset"]
-    model_version = params["app_version"]
-    baseline_year = int(params["start_year"])
-    run_id = params["create_datetime"]
-
-    # Patch model version for loading the data. Results folder name truncated,
-    # e.g. v3.0 does not show the patch version. But data stores in format v3.0.1
-    model_version_data = az.find_latest_version(data_connection, params["app_version"])
-    logger.info(f"Using data: {model_version_data}")
-    if model_version_data == "N/A":
-        raise FileNotFoundError("Results folder not found")
-
-    # Add principal to the "vanilla" model results
-    actual_results_df = az.load_agg_results(results_connection, results_path)
-    actual_results_df = process_results.convert_results_format(actual_results_df)
-
-    return {
-        "results_connection": results_connection,
-        "data_connection": data_connection,
-        "params": params,
-        "scenario_name": scenario_name,
-        "trust": trust,
-        "model_version": model_version,
-        "model_version_data": model_version_data,
-        "baseline_year": baseline_year,
-        "run_id": run_id,
-        "actual_results_df": actual_results_df,
-    }
-
-
 def _check_results_exist(output_dir: str, scenario_name: str, activity_type: str) -> bool:
     """
     Check if results files for a specific activity type already exist.
@@ -161,7 +102,7 @@ def _check_results_exist(output_dir: str, scenario_name: str, activity_type: str
     Args:
         output_dir: Directory where output files are stored
         scenario_name: Name of the scenario
-        activity_type: Type of activity (ip, op, ae)
+        activity_type: Type of activity (ip, op, aae)
 
     Returns:
         bool: True if both CSV and Parquet files exist, False otherwise
@@ -310,7 +251,7 @@ def _process_inpatient_results(
 
 
 def _process_outpatient_results(
-    context: ProcessContext, output_dir: str, op_agg_cols: list[str]
+    context: ProcessContext, output_dir: str, config: DetailedResultsConfig
 ) -> None:
     """
     Process outpatient detailed results.
@@ -346,6 +287,9 @@ def _process_outpatient_results(
     ).fillna("unknown")
     original_df = original_df.rename(columns={"index": "rn"})
 
+    if config.custom_age_groups:
+        original_df["age_group"] = config.age_groups(original_df["age"])
+
     # Pre-allocate dictionary
     op_model_runs = {}
 
@@ -377,7 +321,7 @@ def _process_outpatient_results(
 
         # Use the pre-created reference dataframe
         merged = reference_df.merge(df, on="rn", how="inner")
-        results = process_data.process_op_detailed_results(merged, op_agg_cols)
+        results = process_data.process_op_detailed_results(merged, config.op_agg_cols)
 
         # Load conversion data with batch functionality
         df_conv = az.load_model_run_results_file(
@@ -393,7 +337,7 @@ def _process_outpatient_results(
             },
         )
 
-        df_conv = process_data.process_op_converted_from_ip(df_conv, op_agg_cols)
+        df_conv = process_data.process_op_converted_from_ip(df_conv, config)
         results = process_data.combine_converted_with_main_results(df_conv, results)
 
         # More efficient dictionary update
@@ -410,7 +354,7 @@ def _process_outpatient_results(
 
     # Process results
     op_model_runs_df = process_data.process_model_runs_dict(
-        op_model_runs, columns=op_agg_cols + ["measure"]
+        op_model_runs, columns=config.op_agg_cols + ["measure"]
     )
 
     # Validate results
@@ -490,7 +434,7 @@ def _validate_aae_metric(
 
 
 def _process_aae_results(
-    context: ProcessContext, output_dir: str, aae_agg_cols: list[str]
+    context: ProcessContext, output_dir: str, config: DetailedResultsConfig
 ) -> None:
     """
     Process A&E detailed results.
@@ -503,7 +447,7 @@ def _process_aae_results(
     scenario_name = context["scenario_name"]
 
     # Check if output files already exist
-    if _check_results_exist(output_dir, scenario_name, "ae"):
+    if _check_results_exist(output_dir, scenario_name, "aae"):
         logger.info("Skipping A&E processing as results already exist")
         return
 
@@ -524,6 +468,8 @@ def _process_aae_results(
     original_df = az.load_data_file(
         data_connection, model_version_data, trust, "aae", baseline_year
     ).fillna("unknown")
+    if config.custom_age_groups:
+        original_df["age_group"] = config.age_groups(original_df["age"])
     original_df = original_df.rename(columns={"index": "rn"})
 
     # Pre-allocate dictionary
@@ -557,7 +503,7 @@ def _process_aae_results(
 
         # Use the pre-created reference dataframe
         merged = reference_df.merge(df, on="rn", how="inner")
-        results = process_data.process_aae_results(merged, aae_agg_cols)
+        results = process_data.process_aae_results(merged, config.aae_agg_cols)
 
         # Load conversion data with batch functionality
         df_conv = az.load_model_run_results_file(
@@ -573,7 +519,7 @@ def _process_aae_results(
             },
         )
 
-        df_conv = process_data.process_aae_converted_from_ip(df_conv, aae_agg_cols)
+        df_conv = process_data.process_aae_converted_from_ip(df_conv, config)
         results = process_data.combine_converted_with_main_results(df_conv, results)
 
         # More efficient dictionary update
@@ -591,7 +537,7 @@ def _process_aae_results(
     # Process results
     ae_model_runs_df = process_data.process_model_runs_dict(
         ae_model_runs,
-        columns=aae_agg_cols + ["measure"],
+        columns=config.aae_agg_cols + ["measure"],
     )
 
     # Validate results
@@ -599,9 +545,9 @@ def _process_aae_results(
     _validate_aae_metric(ae_model_runs_df, actual_results_df, "walk-in", "Walk-in")
 
     # Save results
-    ae_model_runs_df.to_csv(f"{output_dir}/{scenario_name}_detailed_ae_results.csv")
+    ae_model_runs_df.to_csv(f"{output_dir}/{scenario_name}_detailed_aae_results.csv")
     ae_model_runs_df.to_parquet(
-        f"{output_dir}/{scenario_name}_detailed_ae_results.parquet"
+        f"{output_dir}/{scenario_name}_detailed_aae_results.parquet"
     )
 
     # Clean up memory
@@ -619,52 +565,9 @@ def _process_aae_results(
     )
 
 
-def suppress_small_counts(
-    df: pd.DataFrame,
-    suppress_cols: List[str],
-    count_col: str = "baseline",
-    threshold: int = 5,
-) -> pd.DataFrame:
-    """Suppression of small counts in detailed results. Filters dataframe to only rows with
-    small numbers, then groups together values in specified columns and re-aggregates.
-
-    Args:
-        df (pd.DataFrame): Processed detailed results
-        suppress_cols (List[str]): List of columns to use in suppressing small numbers,
-        in order of preference.
-        count_col (str, optional): The name of the column with the values to be suppressed
-        and aggregated.
-        Defaults to "value".
-        threshold (int, optional): Maximum count allowed in the count_col
-
-    Returns:
-        pd.DataFrame: Processed detailed results with small counts aggregated together
-    """
-    logger.info("Beginning suppression...")
-    full_index_cols = df.index.names.copy()
-    df = df.reset_index()
-    for col in suppress_cols:
-        keep = df[df[count_col] >= threshold].copy()
-        small = df[df[count_col] < threshold].copy()
-        # avoid suppression if we don't need to
-        if small.empty:
-            break
-        small[col] = "grouped"
-        # reaggregate
-        grouped = (
-            small.groupby(full_index_cols, dropna=False)[count_col].sum().reset_index()
-        )
-        # bind suppressed rows with the ones that didn't need suppression
-        df = pd.concat([keep, grouped], ignore_index=True)
-    return df.set_index(full_index_cols).sort_index()
-
-
 def run_detailed_results(
-    results_path: str,
+    context: ProcessContext,
     output_dir: str | None = None,
-    account_url: str | None = None,
-    results_container: str | None = None,
-    data_container: str | None = None,
     agg_type: str = "standard",
 ) -> dict[str, str]:
     """
@@ -675,11 +578,9 @@ def run_detailed_results(
     exist for any activity type, those processing steps are skipped.
 
     Args:
-        results_path: Path to existing aggregated results
+        context: ProcessContext with metadata for specific scenario to run
         output_dir: Directory to save output files (default: 'nhpy/data')
-        account_url: Azure Storage account URL (default: from environment)
-        results_container: Azure Storage container for results (default: from environment)
-        data_container: Azure Storage container for data (default: from environment)
+        agg_type: Type of aggregation. These are set in config
 
     Returns:
         dict[str, str]: dictionary containing paths to output files
@@ -693,41 +594,18 @@ def run_detailed_results(
     # Start the total timing
     total_start_time = time.perf_counter()
 
-    # Load environment variables if not provided
-    account_url = account_url or os.getenv("AZ_STORAGE_EP", "")
-    results_container = results_container or os.getenv("AZ_STORAGE_RESULTS", "")
-    data_container = data_container or os.getenv("AZ_STORAGE_DATA", "")
-
-    if not all([account_url, results_container, data_container]):
-        missing = []
-        if not account_url:
-            missing.append("AZ_STORAGE_EP")
-        if not results_container:
-            missing.append("AZ_STORAGE_RESULTS")
-        if not data_container:
-            missing.append("AZ_STORAGE_DATA")
-        raise EnvironmentVariableError(
-            missing_vars=missing,
-            message=f"Missing environment variables: {', '.join(missing)}",
-        )
-
     # Set up output directory
     if output_dir is None:
         output_dir = "nhpy/data"
 
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    # Initialise connections and load parameters
-    context = _initialise_connections_and_params(
-        results_path, account_url, results_container, data_container
-    )
-
     scenario_name = context["scenario_name"]
 
     # Check for existing result files
     ip_exists = _check_results_exist(output_dir, scenario_name, "ip")
     op_exists = _check_results_exist(output_dir, scenario_name, "op")
-    ae_exists = _check_results_exist(output_dir, scenario_name, "ae")
+    ae_exists = _check_results_exist(output_dir, scenario_name, "aae")
 
     # Track if we processed any new results
     processed_new_results = False
@@ -743,11 +621,11 @@ def run_detailed_results(
         processed_new_results = True
 
     if not op_exists:
-        _process_outpatient_results(context, output_dir, config.op_agg_cols)
+        _process_outpatient_results(context, output_dir, config)
         processed_new_results = True
 
     if not ae_exists:
-        _process_aae_results(context, output_dir, config.aae_agg_cols)
+        _process_aae_results(context, output_dir, config)
         processed_new_results = True
 
     if processed_new_results:
@@ -766,8 +644,8 @@ def run_detailed_results(
         "ip_parquet": f"{output_dir}/{scenario_name}_detailed_ip_results.parquet",
         "op_csv": f"{output_dir}/{scenario_name}_detailed_op_results.csv",
         "op_parquet": f"{output_dir}/{scenario_name}_detailed_op_results.parquet",
-        "ae_csv": f"{output_dir}/{scenario_name}_detailed_ae_results.csv",
-        "ae_parquet": f"{output_dir}/{scenario_name}_detailed_ae_results.parquet",
+        "aae_csv": f"{output_dir}/{scenario_name}_detailed_aae_results.csv",
+        "aae_parquet": f"{output_dir}/{scenario_name}_detailed_aae_results.parquet",
     }
 
 
@@ -812,35 +690,34 @@ def main() -> int:
         "--op", action="store_true", help="Check/process only outpatient results"
     )
     processing_group.add_argument(
-        "--ae", action="store_true", help="Check/process only A&E results"
+        "--aae", action="store_true", help="Check/process only A&E results"
     )
 
     args = parser.parse_args()
 
+    # Initialise context and connections
+    account_url = args.account_url or os.getenv("AZ_STORAGE_EP", "")
+    results_container = args.results_container or os.getenv("AZ_STORAGE_RESULTS", "")
+    data_container = args.data_container or os.getenv("AZ_STORAGE_DATA", "")
+
+    # Initialise context just to get scenario name
+    context = initialise_connections_and_params(
+        args.results_path, account_url, results_container, data_container
+    )
+
     try:
         # First, check if specific result type was requested
-        if args.ip or args.op or args.ae:
+        if args.ip or args.op or args.aae:
             # Get output directory and scenario name first
             output_dir = args.output_dir
 
             # We need to set up the output directory
             Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-            # Initialize connections to get scenario name
-            account_url = args.account_url or os.getenv("AZ_STORAGE_EP", "")
-            results_container = args.results_container or os.getenv(
-                "AZ_STORAGE_RESULTS", ""
-            )
-            data_container = args.data_container or os.getenv("AZ_STORAGE_DATA", "")
-
-            # Initialise context just to get scenario name
-            context = _initialise_connections_and_params(
-                args.results_path, account_url, results_container, data_container
-            )
             scenario_name = context["scenario_name"]
 
             # Check for existing files for the requested type
-            activity_type = "ip" if args.ip else "op" if args.op else "ae"
+            activity_type = "ip" if args.ip else "op" if args.op else "aae"
             if _check_results_exist(output_dir, scenario_name, activity_type):
                 file_prefix = f"{scenario_name}_detailed_{activity_type}_results"
                 results_base = f"{output_dir}/{file_prefix}"
@@ -853,11 +730,8 @@ def main() -> int:
         # If we're here, either no specific type was requested or files don't exist yet
         # Run detailed results generation
         result_files = run_detailed_results(
-            results_path=args.results_path,
+            context,
             output_dir=args.output_dir,
-            account_url=args.account_url,
-            results_container=args.results_container,
-            data_container=args.data_container,
             agg_type=args.agg_type,
         )
 
@@ -869,8 +743,8 @@ def main() -> int:
             logger.info(f"IP results: {result_files['ip_csv']}")
         elif args.op:
             logger.info(f"OP results: {result_files['op_csv']}")
-        elif args.ae:
-            logger.info(f"A&E results: {result_files['ae_csv']}")
+        elif args.aae:
+            logger.info(f"A&E results: {result_files['aae_csv']}")
         else:
             logger.info(f"Files generated: {len(result_files)}")
 

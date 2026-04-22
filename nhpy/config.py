@@ -129,7 +129,6 @@ class DetailedResultsHRG(DetailedResultsConfig):
             ip_agg_cols=[
                 "sitetret",
                 "age_group",
-                "sex",
                 "pod",
                 "tretspef",
                 "sushrg",
@@ -142,7 +141,6 @@ class DetailedResultsHRG(DetailedResultsConfig):
                 "age_group",
                 "attendance_category",
                 "aedepttype",
-                "acuity",
             ],
             custom_age_groups=custom_age_groups,
         )

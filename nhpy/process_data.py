@@ -191,13 +191,12 @@ def process_op_detailed_results(
     return data
 
 
-def process_op_converted_from_ip(data: pd.DataFrame, op_agg_cols: list[str]) -> pd.Series:
+def process_op_converted_from_ip(data: pd.DataFrame, config) -> pd.Series:
     """Process the OP activity converted from IP, adding pod and age_group, and
     grouping by specified columns
 
     Args:
         data: the OP activity converted from IP in each Monte Carlo simulation
-        op_agg_cols: list of column names to aggregate by
 
     Returns:
         The processed and aggregated data
@@ -207,9 +206,11 @@ def process_op_converted_from_ip(data: pd.DataFrame, op_agg_cols: list[str]) -> 
     data["pod"] = "op_procedure"
     # op conversion should only ever be attendances, not teleattendances
     data["measure"] = "attendances"
+    if config.custom_age_groups:
+        data["age_group"] = config.age_groups(data["age"])
     return (
         data.rename(columns={"attendances": "value"})
-        .groupby(op_agg_cols + ["measure"])["value"]
+        .groupby(config.op_agg_cols + ["measure"])["value"]
         .sum()
     )
 
@@ -262,15 +263,12 @@ def process_aae_results(data: pd.DataFrame, aae_agg_cols: list[str]) -> pd.DataF
     return pd.DataFrame(grouped_data)
 
 
-def process_aae_converted_from_ip(
-    data: pd.DataFrame, aae_agg_cols: list[str]
-) -> pd.Series:
+def process_aae_converted_from_ip(data: pd.DataFrame, config) -> pd.Series:
     """Process the AAE SDEC activity converted from IP, adding pod and age_group,
     and grouping by specified columns.
 
     Args:
         data: the AAE SDEC activity converted from IP in each Monte Carlo simulation
-        aae_agg_cols: list of column names to aggregate by
 
     Returns:
         The processed and aggregated data
@@ -279,8 +277,10 @@ def process_aae_converted_from_ip(
     # activity converted to AAE should only be aae_type-05
     data["pod"] = "aae_type-05"
     data = data.rename(columns={"group": "measure"})
+    if config.custom_age_groups:
+        data["age_group"] = config.age_groups(data["age"])
     # Group the data and return a Series
-    result_series = data.groupby(aae_agg_cols + ["measure"])["arrivals"].sum()
+    result_series = data.groupby(config.aae_agg_cols + ["measure"])["arrivals"].sum()
 
     return result_series
 
