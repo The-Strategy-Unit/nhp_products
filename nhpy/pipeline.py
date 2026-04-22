@@ -462,7 +462,9 @@ def main() -> int:
         )
 
         if args.include_baseline:
-            pass  # TODO
+            add_baseline_to_detailed_results(
+                results_paths, context, args.agg_type, output_dir
+            )
 
         logger.info(f"{SUCCESS_COLOR}Pipeline completed successfully!{RESET}")
         logger.info(f"{SUCCESS_COLOR}Detailed results saved to:{RESET} {output_dir}")
