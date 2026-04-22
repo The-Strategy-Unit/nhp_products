@@ -141,7 +141,6 @@ class DetailedResultsHRG(DetailedResultsConfig):
                 "age_group",
                 "attendance_category",
                 "aedepttype",
-                "acuity",
             ],
             custom_age_groups=custom_age_groups,
         )

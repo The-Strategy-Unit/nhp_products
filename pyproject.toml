@@ -35,6 +35,7 @@ dependencies = [
     "nhp-aci",
     "pre-commit>=4.2.0",
     "jupyter>=1.1.1",
+    "nhp-ats-tui",
 ]
 
 
@@ -121,3 +122,4 @@ markers = [
 
 [tool.uv.sources]
 nhp-aci = { git = "https://github.com/the-strategy-unit/nhp_aci.git" }
+nhp-ats-tui = { git = "https://github.com/The-Strategy-Unit/nhp_ats_tui" }

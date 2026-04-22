@@ -5,7 +5,11 @@ import pandas as pd
 
 from nhpy.az import load_data_file
 from nhpy.config import DetailedResultsConfig, DetailedResultsHRG, DetailedResultsStandard
-from nhpy.process_data import process_ip_detailed_results
+from nhpy.process_data import (
+    process_aae_results,
+    process_ip_detailed_results,
+    process_op_detailed_results,
+)
 from nhpy.types import ProcessContext
 from nhpy.utils import (
     get_logger,
@@ -57,47 +61,71 @@ def suppress_small_counts(
 def add_baseline_to_detailed_results(
     results_paths: dict[str, str], context: ProcessContext, agg_type: str, output_dir: str
 ):
-    # IP first. TODO: OP and A&E
-    activity_type = "ip"
-    if agg_type == "standard":
-        config = DetailedResultsStandard()
-    if agg_type == "hrg":
-        config = DetailedResultsHRG()
-    detailed_results = pd.read_parquet(results_paths[f"{activity_type}_parquet"])
-    baseline = load_data_file(
-        container_client=context["data_connection"],
-        version=context["model_version_data"],
-        dataset=context["trust"],
-        activity_type=activity_type,
-        year=context["baseline_year"],
-    )
-    if config.custom_age_groups:
-        baseline["age_group"] = config.age_groups(baseline["age"])
-    baseline_processed = process_ip_detailed_results(baseline, config.ip_agg_cols)
-    baseline_processed = baseline_processed.rename(columns={"value": "baseline"})
-    unsuppressed_with_baseline = (
-        detailed_results.merge(
-            baseline_processed, left_index=True, right_index=True, how="outer"
-        )
-        .fillna(0)
-        .drop(columns=["lwr_ci", "median", "upr_ci"])
-        .copy()
-    )
-    suppressed_with_baseline = suppress_small_counts(
-        unsuppressed_with_baseline,
-        suppress_cols=[
+    """Adds baseline to detailed results and suppresses rows where counts are <5 in baseline,
+    grouping together by the suppress_cols
+
+    Args:
+        results_paths (dict[str, str]): Results paths, returned from
+        nhpy.run_detailed_results.run_detailed_results
+        context (ProcessContext): Processing context with connection information and metadata
+        agg_type (str): Type of aggregation: hrg or standard
+        output_dir (str): Output directory to save results in
+    """
+    suppress_cols = {
+        "ip": [
             "sushrg",
             "tretspef",
             "maternity_delivery_in_spell",
             "age_group",
             "sitetret",
         ],
-    )
-    suppressed_with_baseline.to_csv(
-        f"{output_dir}/{context['scenario_name']}_detailed_{activity_type}_with_baseline.csv"
-    )
-    suppressed_with_baseline.to_parquet(
-        f"{output_dir}/{context['scenario_name']}_detailed_{activity_type}_with_baseline.parquet"
-    )
+        "op": ["tretspef", "age_group", "sitetret"],
+        "aae": ["age_group", "attendance_category", "aedepttype", "sitetret"],
+    }  # TODO: This is currently hardcoded to only work for the hrg agg_type
+    for activity_type in ["ip", "op", "aae"]:
+        if agg_type == "standard":
+            config = DetailedResultsStandard()
+        if agg_type == "hrg":
+            config = DetailedResultsHRG()
+        detailed_results = pd.read_parquet(results_paths[f"{activity_type}_parquet"])
+        baseline = load_data_file(
+            container_client=context["data_connection"],
+            version=context["model_version_data"],
+            dataset=context["trust"],
+            activity_type=activity_type,
+            year=context["baseline_year"],
+        )
+        if config.custom_age_groups:
+            baseline["age_group"] = config.age_groups(baseline["age"])
+        if activity_type == "ip":
+            baseline_processed = process_ip_detailed_results(baseline, config.ip_agg_cols)
+        if activity_type == "op":
+            baseline_processed = process_op_detailed_results(
+                baseline.rename(columns={"index": "rn"}), config.op_agg_cols
+            )
+        if activity_type == "aae":
+            baseline_processed = process_aae_results(
+                baseline, config.aae_agg_cols
+            ).rename(columns={"arrivals": "value"})
+        baseline_processed = baseline_processed.rename(columns={"value": "baseline"})
+        unsuppressed_with_baseline = (
+            detailed_results.merge(
+                baseline_processed, left_index=True, right_index=True, how="outer"
+            )
+            .fillna(0)
+            .drop(columns=["lwr_ci", "median", "upr_ci"])
+            .copy()
+        )
+        suppressed_with_baseline = suppress_small_counts(
+            unsuppressed_with_baseline,
+            suppress_cols=suppress_cols[activity_type],
+        )
+        # TODO: ADD IN SITES FILTER
+        suppressed_with_baseline.to_csv(
+            f"{output_dir}/{context['scenario_name']}_detailed_{activity_type}_with_baseline.csv"
+        )
+        suppressed_with_baseline.to_parquet(
+            f"{output_dir}/{context['scenario_name']}_detailed_{activity_type}_with_baseline.parquet"
+        )
     logger.info("🎉 Baseline added successfully!")
     logger.info(f"Results saved to: {output_dir}/")

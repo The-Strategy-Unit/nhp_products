@@ -251,7 +251,7 @@ def _process_inpatient_results(
 
 
 def _process_outpatient_results(
-    context: ProcessContext, output_dir: str, op_agg_cols: list[str]
+    context: ProcessContext, output_dir: str, config: DetailedResultsConfig
 ) -> None:
     """
     Process outpatient detailed results.
@@ -287,6 +287,9 @@ def _process_outpatient_results(
     ).fillna("unknown")
     original_df = original_df.rename(columns={"index": "rn"})
 
+    if config.custom_age_groups:
+        original_df["age_group"] = config.age_groups(original_df["age"])
+
     # Pre-allocate dictionary
     op_model_runs = {}
 
@@ -318,7 +321,7 @@ def _process_outpatient_results(
 
         # Use the pre-created reference dataframe
         merged = reference_df.merge(df, on="rn", how="inner")
-        results = process_data.process_op_detailed_results(merged, op_agg_cols)
+        results = process_data.process_op_detailed_results(merged, config.op_agg_cols)
 
         # Load conversion data with batch functionality
         df_conv = az.load_model_run_results_file(
@@ -334,7 +337,7 @@ def _process_outpatient_results(
             },
         )
 
-        df_conv = process_data.process_op_converted_from_ip(df_conv, op_agg_cols)
+        df_conv = process_data.process_op_converted_from_ip(df_conv, config.op_agg_cols)
         results = process_data.combine_converted_with_main_results(df_conv, results)
 
         # More efficient dictionary update
@@ -351,7 +354,7 @@ def _process_outpatient_results(
 
     # Process results
     op_model_runs_df = process_data.process_model_runs_dict(
-        op_model_runs, columns=op_agg_cols + ["measure"]
+        op_model_runs, columns=config.op_agg_cols + ["measure"]
     )
 
     # Validate results
@@ -431,7 +434,7 @@ def _validate_aae_metric(
 
 
 def _process_aae_results(
-    context: ProcessContext, output_dir: str, aae_agg_cols: list[str]
+    context: ProcessContext, output_dir: str, config: DetailedResultsConfig
 ) -> None:
     """
     Process A&E detailed results.
@@ -465,6 +468,8 @@ def _process_aae_results(
     original_df = az.load_data_file(
         data_connection, model_version_data, trust, "aae", baseline_year
     ).fillna("unknown")
+    if config.custom_age_groups:
+        original_df["age_group"] = config.age_groups(original_df["age"])
     original_df = original_df.rename(columns={"index": "rn"})
 
     # Pre-allocate dictionary
@@ -498,7 +503,7 @@ def _process_aae_results(
 
         # Use the pre-created reference dataframe
         merged = reference_df.merge(df, on="rn", how="inner")
-        results = process_data.process_aae_results(merged, aae_agg_cols)
+        results = process_data.process_aae_results(merged, config.aae_agg_cols)
 
         # Load conversion data with batch functionality
         df_conv = az.load_model_run_results_file(
@@ -514,7 +519,7 @@ def _process_aae_results(
             },
         )
 
-        df_conv = process_data.process_aae_converted_from_ip(df_conv, aae_agg_cols)
+        df_conv = process_data.process_aae_converted_from_ip(df_conv, config.aae_agg_cols)
         results = process_data.combine_converted_with_main_results(df_conv, results)
 
         # More efficient dictionary update
@@ -532,7 +537,7 @@ def _process_aae_results(
     # Process results
     ae_model_runs_df = process_data.process_model_runs_dict(
         ae_model_runs,
-        columns=aae_agg_cols + ["measure"],
+        columns=config.aae_agg_cols + ["measure"],
     )
 
     # Validate results
@@ -540,9 +545,9 @@ def _process_aae_results(
     _validate_aae_metric(ae_model_runs_df, actual_results_df, "walk-in", "Walk-in")
 
     # Save results
-    ae_model_runs_df.to_csv(f"{output_dir}/{scenario_name}_detailed_ae_results.csv")
+    ae_model_runs_df.to_csv(f"{output_dir}/{scenario_name}_detailed_aae_results.csv")
     ae_model_runs_df.to_parquet(
-        f"{output_dir}/{scenario_name}_detailed_ae_results.parquet"
+        f"{output_dir}/{scenario_name}_detailed_aae_results.parquet"
     )
 
     # Clean up memory
@@ -616,11 +621,11 @@ def run_detailed_results(
         processed_new_results = True
 
     if not op_exists:
-        _process_outpatient_results(context, output_dir, config.op_agg_cols)
+        _process_outpatient_results(context, output_dir, config)
         processed_new_results = True
 
     if not ae_exists:
-        _process_aae_results(context, output_dir, config.aae_agg_cols)
+        _process_aae_results(context, output_dir, config)
         processed_new_results = True
 
     if processed_new_results:
@@ -639,8 +644,8 @@ def run_detailed_results(
         "ip_parquet": f"{output_dir}/{scenario_name}_detailed_ip_results.parquet",
         "op_csv": f"{output_dir}/{scenario_name}_detailed_op_results.csv",
         "op_parquet": f"{output_dir}/{scenario_name}_detailed_op_results.parquet",
-        "ae_csv": f"{output_dir}/{scenario_name}_detailed_ae_results.csv",
-        "ae_parquet": f"{output_dir}/{scenario_name}_detailed_ae_results.parquet",
+        "aae_csv": f"{output_dir}/{scenario_name}_detailed_aae_results.csv",
+        "aae_parquet": f"{output_dir}/{scenario_name}_detailed_aae_results.parquet",
     }
 
 
