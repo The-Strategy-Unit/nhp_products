@@ -744,7 +744,7 @@ def main() -> int:
         elif args.op:
             logger.info(f"OP results: {result_files['op_csv']}")
         elif args.ae:
-            logger.info(f"A&E results: {result_files['ae_csv']}")
+            logger.info(f"A&E results: {result_files['aae_csv']}")
         else:
             logger.info(f"Files generated: {len(result_files)}")
 
