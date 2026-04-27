@@ -33,6 +33,7 @@ Exit codes:
 # %%
 import argparse
 import logging
+import os
 import platform
 import subprocess
 import sys
@@ -41,10 +42,12 @@ from pathlib import Path
 # For cross-platform coloured terminal output
 from colorama import Fore, Style, init
 
+from nhpy.add_and_suppress_baseline import add_baseline_to_detailed_results
 from nhpy.check_full_results import check_full_results
 from nhpy.config import ExitCodes
 from nhpy.run_detailed_results import run_detailed_results
 from nhpy.run_full_results import run_scenario_with_full_results
+from nhpy.utils import initialise_connections_and_params
 
 # Initialise colorama with autoreset to avoid colour bleeding
 init(autoreset=True)
@@ -374,6 +377,9 @@ def main() -> int:
         default="standard",
         choices=["standard", "hrg"],
     )
+    parser.add_argument(
+        "--include-baseline", help="Whether to include baseline", action="store_true"
+    )
     args = parser.parse_args()
 
     try:
@@ -437,14 +443,28 @@ def main() -> int:
         logger.info(f"{INFO_COLOR}Starting detailed results processing{RESET}")
         logger.info(f"{INFO_COLOR}(IP, OP, and AAE data)...{RESET}")
 
-        run_detailed_results(
-            results_path=scenario_path_for_detailed,
+        # Initialise context
+        account_url = args.account_url or os.getenv("AZ_STORAGE_EP", "")
+        results_container = args.results_container or os.getenv("AZ_STORAGE_RESULTS", "")
+        data_container = args.data_container or os.getenv("AZ_STORAGE_DATA", "")
+
+        context = initialise_connections_and_params(
+            scenario_path_for_detailed,
+            account_url,
+            results_container,
+            data_container,
+        )
+
+        results_paths = run_detailed_results(
+            context,
             output_dir=str(output_dir),
-            account_url=args.account_url,
-            results_container=args.results_container,
-            data_container=args.data_container,
             agg_type=args.agg_type,
         )
+
+        if args.include_baseline:
+            add_baseline_to_detailed_results(
+                results_paths, context, args.agg_type, output_dir
+            )
 
         logger.info(f"{SUCCESS_COLOR}Pipeline completed successfully!{RESET}")
         logger.info(f"{SUCCESS_COLOR}Detailed results saved to:{RESET} {output_dir}")

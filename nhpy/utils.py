@@ -21,9 +21,15 @@ from typing import cast
 
 from dotenv import load_dotenv
 
-from nhpy.az import connect_to_container, load_agg_params
+from nhpy.az import (
+    connect_to_container,
+    find_latest_version,
+    load_agg_params,
+    load_agg_results,
+)
 from nhpy.config import EnvironmentVariableError
-from nhpy.types import EnvironmentConfig, ScenarioPaths
+from nhpy.process_results import convert_results_format
+from nhpy.types import EnvironmentConfig, ProcessContext, ScenarioPaths
 
 # %% [markdown]
 # Logging setup functions
@@ -211,11 +217,7 @@ def _load_environment_variables() -> EnvironmentConfig:
     """
     _load_dotenv_file()
 
-    required_vars = [
-        "AZ_STORAGE_EP",
-        "AZ_STORAGE_RESULTS",
-        "AZ_STORAGE_DATA"
-    ]
+    required_vars = ["AZ_STORAGE_EP", "AZ_STORAGE_RESULTS", "AZ_STORAGE_DATA"]
 
     return _validate_environment_variables(required_vars)
 
@@ -303,3 +305,61 @@ def _load_scenario_params(
     logger.debug(f"Loaded parameters for scenario: {params.get('scenario', 'unknown')}")
 
     return params
+
+
+def initialise_connections_and_params(
+    results_path: str,
+    account_url: str,
+    results_container: str,
+    data_container: str,
+) -> ProcessContext:
+    """
+    Initialize connections and load parameters from the aggregated results.
+
+    Args:
+        results_path: Path to the aggregated model results
+        account_url: Azure Storage account URL
+        results_container: Azure Storage container for results
+        data_container: Azure Storage container for data
+
+    Returns:
+        dict containing all necessary objects and parameters for processing
+
+    Raises:
+        FileNotFoundError: If results folder or data version not found
+    """
+    # Connections and params
+    results_connection = connect_to_container(account_url, results_container)
+    data_connection = connect_to_container(account_url, data_container)
+    params = load_agg_params(results_connection, results_path)
+
+    # Get info from the results file
+    scenario_name = params["scenario"]
+    trust = params["dataset"]
+    model_version = params["app_version"]
+    baseline_year = int(params["start_year"])
+    run_id = params["create_datetime"]
+
+    # Patch model version for loading the data. Results folder name truncated,
+    # e.g. v3.0 does not show the patch version. But data stores in format v3.0.1
+    model_version_data = find_latest_version(data_connection, params["app_version"])
+    logger.info(f"Using data: {model_version_data}")
+    if model_version_data == "N/A":
+        raise FileNotFoundError("Results folder not found")
+
+    # Add principal to the "vanilla" model results
+    actual_results_df = load_agg_results(results_connection, results_path)
+    actual_results_df = convert_results_format(actual_results_df)
+
+    return {
+        "results_connection": results_connection,
+        "data_connection": data_connection,
+        "params": params,
+        "scenario_name": scenario_name,
+        "trust": trust,
+        "model_version": model_version,
+        "model_version_data": model_version_data,
+        "baseline_year": baseline_year,
+        "run_id": run_id,
+        "actual_results_df": actual_results_df,
+    }

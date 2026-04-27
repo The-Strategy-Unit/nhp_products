@@ -60,6 +60,18 @@ uv run python -m nhpy.pipeline aggregated-model-results/v4.x/RXX/test/20250101_1
 uv run python -m nhpy.pipeline aggregated-model-results/v4.x/RXX/test/20250101_100000/ -o <results_path>
 ```
 
+Optional arguments that have been added to main pipeline:
+
+`--agg-type`: Options: `standard` and `hrg`. Defaults to `standard`. Changes aggregation columns and age_groups used in detailed results.
+
+`--include-baseline`: Whether or not to include the (suppressed) baseline. Only works for IP currently
+
+Example usage, running the hrg aggregation AND including the baseline:
+
+```bash
+uv run python -m --agg-type hrg --include-baseline nhpy.pipeline aggregated-model-results/v4.x/RXX/test/20250101_100000/
+```
+
 ```mermaid
 ---
 config:
