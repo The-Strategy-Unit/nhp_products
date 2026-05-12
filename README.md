@@ -119,17 +119,9 @@ flowchart TD
 
 We have a number of products that are available on request. These are:
 
-### Time profiles
-
-Jupyter notebook in `notebooks/PRODUCT_time-profiles`, used to create the time
-profiles for specific scenarios, using
-[this methodology](https://connect.strategyunitwm.nhs.uk/nhp/project_information/user_guide/glossary.html#time-profiles).
-
 ### Detailed results
 
-Jupyter notebook in `notebooks/PRODUCT_detailed_results`, used for converting
-NHP model results into a format more suitable for conversion to capacity.
-Scenario must have "full model results" for the notebook to work.
+This is the main nhpy pipeline - see above.
 
 ### Detailed activity avoided
 
