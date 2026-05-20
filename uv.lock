@@ -1277,8 +1277,8 @@ wheels = [
 
 [[package]]
 name = "nhp-aci"
-version = "0.1.dev62+gd545bba6a"
-source = { git = "https://github.com/the-strategy-unit/nhp_aci.git#d545bba6a18e89f40752d0799ba6e2d8f8f9f4f1" }
+version = "0.1.dev69+gf8dafd828"
+source = { git = "https://github.com/the-strategy-unit/nhp_aci.git#f8dafd828ab7231c94dd08839d9b23403b4eec63" }
 dependencies = [
     { name = "azure-data-tables" },
     { name = "azure-identity" },
