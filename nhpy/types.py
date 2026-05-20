@@ -19,7 +19,6 @@ from pandas import DataFrame
 class ScenarioPaths(TypedDict):
     """Return type for scenario run results."""
 
-    json_path: str
     aggregated_results_path: str
     full_results_path: str
     original_datetime: str
