@@ -48,85 +48,28 @@ def convert_results_format(results: pd.DataFrame, include_baseline=True) -> pd.D
     return df_with_model_runs_combined
 
 
-def add_principal(model_results: pd.DataFrame) -> pd.DataFrame:
-    """Adds column 'principal' to old JSON format of model results
-    TODO: Deprecate function; we should be working with Parquet format of model results
-
-    Args:
-        model_results (pd.DataFrame):
-
-    Returns:
-        pd.DataFrame: Model results with principal (mean) column added
-    """
-    res = pd.DataFrame(model_results).fillna("-")
-    for i in res.index:
-        p = np.mean(res.loc[i, "model_runs"])
-        res.loc[i, "principal"] = p
-    return res
-
-
-def agg_default(df: pd.DataFrame) -> pd.DataFrame:
-    """Groups model results dataframe by pod and measure, summing the baseline and
-    the principal columns
-
-    Args:
-        df (pd.DataFrame): Model results containing the columns 'pod', 'measure',
-        'baseline' and 'principal'
-
-    Returns:
-        _type_: _description_
-    """
-    return (
-        df.groupby(["pod", "measure"])
-        .agg({"baseline": "sum", "principal": "sum"})
-        .astype(int)
-    )
-
-
-def process_default(full_results: dict, trust: str) -> pd.DataFrame:
-    """Processes the 'default' results from the old JSON format of model results
-    TODO: Deprecate function; we should be working with Parquet format of model results
-
-    Args:
-        full_results (dict): Full JSON dictionary of model results
-        trust (str): Provider code, usually the "dataset" from the model params
-
-    Returns:
-        pd.DataFrame: Aggregated 'default' results
-    """
-    df = full_results["results"]["default"]
-    df_with_principal = add_principal(df)
-    df_aggregated = agg_default(df_with_principal)
-    df_aggregated["trust"] = trust
-    return df_aggregated
-
-
-def compare_results(results_dict: dict, trust: str) -> pd.DataFrame:
-    """Helper function for the qa_model_runs notebook. Compares model results for
+def compare_results(df_old: pd.DataFrame, df_new: pd.DataFrame) -> pd.DataFrame:
+    """Helper function for the qa_model_runs notebook. Compares default model results for
     the same provider/scenario run on two different model versions, and calculates
     differences between pods
 
     Args:
-        results_dict (dict): Dictionary containing the results for the two runs
-                            to be compared
-        trust (str): Provider code for the trust
+        df_old (pd.DataFrame): Dataframe of default results from previous model version
+        df_new (pd.DataFrame): Dataframe of default results from dev model version
 
     Returns:
         pd.DataFrame: Dataframe with the differences between pods calculated
     """
-    df_old = process_default(results_dict[trust]["results_old"], trust)
-    df_new = process_default(results_dict[trust]["results_new"], trust)
+    df_old = df_old.groupby(["dataset", "pod", "measure"])[["baseline", "mean"]].sum()
+    df_new = df_new.groupby(["dataset", "pod", "measure"])[["baseline", "mean"]].sum()
     combined = df_old.merge(
-        df_new.drop(columns=["baseline", "trust"]),
-        left_index=True,
-        right_index=True,
-        suffixes=("_old", "_new"),
+        df_new, left_index=True, right_index=True, suffixes=("_old", "_new"), how="outer"
     )
     # Create a temporary DataFrame with just the columns we need
-    temp_df = pd.DataFrame(combined[["principal_old", "principal_new"]])
+    temp_df = pd.DataFrame(combined[["mean_old", "mean_new"]])
     # Use pct_change without the axis parameter, then extract the column we want
-    pct_change_df = temp_df.pct_change(periods=1, fill_method=None)
-    combined["%_diff"] = abs(pct_change_df["principal_new"].round(4).fillna(0))
+    pct_change_df = temp_df.pct_change(axis="columns") * 100
+    combined["%_diff"] = abs(pct_change_df["mean_new"].fillna(0))
     return combined
 
 
@@ -146,23 +89,6 @@ def agg_stepcounts(stepcounts: pd.DataFrame) -> pd.Series:
         .sum()
         .astype(int)
     )
-
-
-def process_stepcounts(full_results: dict) -> pd.DataFrame:
-    """Processes the step counts in the full model results JSON
-    TODO: Deprecate function; we should be working with Parquet format of model results
-
-    Args:
-        full_results (dict): Full JSON dictionary of model results
-
-    Returns:
-        pd.DataFrame: Aggregated 'step_counts' from results
-    """
-    df = pd.DataFrame(full_results["results"]["step_counts"]).fillna("-")
-    if "strategy" not in df.columns:
-        df["strategy"] = "-"
-    df_with_principal = add_principal(df)
-    return pd.DataFrame(agg_stepcounts(df_with_principal))
 
 
 def compare_default(
@@ -202,21 +128,45 @@ def compare_default(
     return merged
 
 
-def compare_stepcounts(results_dict: dict, trust: str) -> pd.DataFrame:
+def process_stepcounts(sc: pd.DataFrame) -> pd.DataFrame:
+    """Calculates principal (mean) for step counts from parquet results, across all model runs
+
+    Args:
+        sc (pd.DataFrame): Step counts dataframe
+
+    Returns:
+        pd.DataFrame: Step counts aggregated
+    """
+    return (
+        sc.groupby(
+            [
+                "dataset",
+                "activity_type",
+                "pod",
+                "change_factor",
+                "strategy",
+                "measure",
+            ]
+        )[["value"]]
+        .mean()
+        .rename(columns={"value": "mean"})
+    )
+
+
+def compare_stepcounts(df_old: pd.DataFrame, df_new: pd.DataFrame) -> pd.DataFrame:
     """Helper function for the qa_model_runs notebook. Compares step_counts in
     model results for the same provider/scenario run on two different model versions,
     and calculates differences
 
     Args:
-        results_dict (dict): Dictionary containing the results for the two runs to
-        be compared
-        trust (str): Provider code for the trust
+        df_old (pd.DataFrame): Dataframe of default results from previous model version
+        df_new (pd.DataFrame): Dataframe of default results from dev model version
 
     Returns:
         pd.DataFrame: Dataframe with the differences between step counts
     """
-    df_old = process_stepcounts(results_dict[trust]["results_old"])
-    df_new = process_stepcounts(results_dict[trust]["results_new"])
+    df_old = process_stepcounts(df_old)
+    df_new = process_stepcounts(df_new)
     combined = df_old.merge(
         df_new,
         left_index=True,
@@ -224,10 +174,7 @@ def compare_stepcounts(results_dict: dict, trust: str) -> pd.DataFrame:
         how="outer",
         suffixes=("_old", "_new"),
     ).fillna(0)
-    combined["trust"] = trust
-    # Cast to DataFrame explicitly to satisfy type checker
-    df = pd.DataFrame(combined[["principal_old", "principal_new"]])
     # Use pct_change without the axis parameter
-    pct_change_df = df.pct_change(periods=1, fill_method=None)
-    combined["%_diff"] = abs(pct_change_df["principal_new"].round(4).fillna(0))
+    pct_change_df = combined.pct_change(axis=1)
+    combined["%_diff"] = abs(pct_change_df["mean_new"].fillna(0)) * 100
     return combined

@@ -237,10 +237,6 @@ def _construct_results_path(params: dict[str, object]) -> ScenarioPaths:
     Returns:
         ScenarioPaths: Dictionary with result paths
     """
-    json_path = (
-        f"prod/{params['app_version']}/{params['dataset']}/"
-        f"{params['scenario']}-{params['create_datetime']}.json.gz"
-    )
 
     aggregated_results_path = (
         f"aggregated-model-results/{params['app_version']}/{params['dataset']}/"
@@ -253,11 +249,9 @@ def _construct_results_path(params: dict[str, object]) -> ScenarioPaths:
     )
 
     logger.info("📁 Result paths constructed:")
-    logger.info(f"📄 JSON: {json_path}")
     logger.info(f"∑ Aggregated: {aggregated_results_path}")
 
     return ScenarioPaths(
-        json_path=json_path,
         aggregated_results_path=aggregated_results_path,
         full_results_path=full_results_path,
         original_datetime=str(params["original_datetime"]),
