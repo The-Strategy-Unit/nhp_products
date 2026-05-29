@@ -34,6 +34,7 @@ class Colours:
 class Constants:
     PATH_DEPTH = 5
     TIMEOUT_SEC = 30
+    VERSION_LENGTH = 3  # major.minor.patch
 
     # Age group boundaries
     AGE_UNKNOWN = -1

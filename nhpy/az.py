@@ -22,8 +22,9 @@ from azure.core.exceptions import (
 )
 from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobPrefix, ContainerClient
+from packaging.version import Version
 
-from nhpy.config import EmptyContainerError
+from nhpy.config import Constants, EmptyContainerError
 from nhpy.types import ModelRunParams
 
 # %% cache
@@ -106,32 +107,52 @@ def get_azure_blobs(
 
 
 # %%
-def find_latest_version(container_client: ContainerClient, version: str) -> str:
-    """Finds latest version of data given a model version. Params and model results files
-    do not include patch versions.
-    For example, given version v3.0, if folders v3.0.1 and v3.0.0 exist,
-    it will return v3.0.1
+def list_all_versions(container_client: ContainerClient) -> list[str]:
+    """Return all version folder names from the container."""
+    return [
+        blob.name.strip("/")
+        for blob in container_client.walk_blobs(delimiter="/")
+        if isinstance(blob, BlobPrefix)
+    ]
 
-    Args:
-        container_client: Connection to the container with the results files
-        version: Version of the dataset to be used
 
-    Returns:
-        str: Latest patch version available, or None if no versions found
-
-    Raises:
-        AzureError: If there's an issue accessing the container
-    """
+def is_version_folder(name: str) -> bool:
+    """Check if a folder name looks like a vX.Y.Z version."""
     try:
-        list_of_folders = []
-        for blob in container_client.walk_blobs(name_starts_with=version, delimiter="/"):
-            if isinstance(blob, BlobPrefix):
-                list_of_folders.append(blob.name)
+        Version(name.lstrip("v"))
+        return len(name.lstrip("v").split(".")) == Constants.VERSION_LENGTH
+    except Exception:
+        return False
 
-        if not list_of_folders:
-            return "N/A"
 
-        return sorted(list_of_folders)[-1].strip("/")
+def same_minor(v: str, major: int, minor: int) -> bool:
+    parsed = Version(v.lstrip("v"))
+    return parsed.major == major and parsed.minor == minor
+
+
+def earlier_minor(v: str, major: int, minor: int) -> bool:
+    parsed = Version(v.lstrip("v"))
+    return (parsed.major, parsed.minor) < (major, minor)
+
+
+def latest(versions: list[str]) -> str | None:
+    return max(versions, key=lambda v: Version(v.lstrip("v")), default=None)
+
+
+def find_latest_version(container_client: ContainerClient, version: str) -> str:
+    try:
+        all_versions = [
+            v for v in list_all_versions(container_client) if is_version_folder(v)
+        ]
+        parsed = Version(version.lstrip("v"))
+        major, minor = parsed.major, parsed.minor
+
+        same = [v for v in all_versions if same_minor(v, major, minor)]
+        if same:
+            return latest(same)
+
+        earlier = [v for v in all_versions if earlier_minor(v, major, minor)]
+        return latest(earlier) or "N/A"
     except AzureError:
         raise
 
