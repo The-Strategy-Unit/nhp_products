@@ -104,6 +104,7 @@ Thumbs.db
 *.csv
 *.json
 *.parquet
+*/data/*
 data/*
 
 # Rendered files
