@@ -1277,8 +1277,8 @@ wheels = [
 
 [[package]]
 name = "nhp-aci"
-version = "0.1.dev69+gf8dafd828"
-source = { git = "https://github.com/the-strategy-unit/nhp_aci.git#f8dafd828ab7231c94dd08839d9b23403b4eec63" }
+version = "0.1.dev77+gc91b228a4"
+source = { git = "https://github.com/the-strategy-unit/nhp_aci.git#c91b228a4856b985862d97f16099ad2f18fb3592" }
 dependencies = [
     { name = "azure-data-tables" },
     { name = "azure-identity" },
@@ -1291,7 +1291,7 @@ dependencies = [
 [[package]]
 name = "nhp-ats-tui"
 version = "0.1.0.9000"
-source = { git = "https://github.com/The-Strategy-Unit/nhp_ats_tui#edffcce3302a7fadd3c655afc25407e65026d23c" }
+source = { git = "https://github.com/The-Strategy-Unit/nhp_ats_tui#8d07934726536a67561106b4e2f6f4f35e1f86cc" }
 dependencies = [
     { name = "azure-data-tables" },
     { name = "azure-identity" },
