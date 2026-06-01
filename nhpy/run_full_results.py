@@ -164,7 +164,7 @@ def _start_container(params: dict[str, object]) -> dict[str, str]:
                 f"""
             ✅ Container successfully started 🥳
             {Colours.GREEN}Create datetime: {metadata["create_datetime"]}{Colours.RESET}
-            Container ID: {metadata["id"]}"""
+            Model run ID: {metadata["model_run_id"]}"""
             ).strip()
         )
         return metadata
@@ -189,7 +189,7 @@ def _track_container_status(metadata: dict[str, str]):
     time.sleep(120)
     while True:
         try:
-            status = get_model_run_status(metadata["id"])
+            status = get_model_run_status(metadata["dataset"], metadata["model_run_id"])
         except Exception as e:
             logger.error(
                 f"Error fetching container status: {e}. Retrying in 120 seconds..."
@@ -207,10 +207,10 @@ def _track_container_status(metadata: dict[str, str]):
                 )
             # Check for completion and exit
             elif state == "Terminated":
-                if detail_status == "Completed":
-                    logger.info("✅ Container completed successfully.")
-                else:
-                    logger.error(f"❌ Container terminated with status {detail_status}")
+                logger.error(f"❌ Container terminated with status {detail_status}")
+                return
+            elif status.get("status") == "complete":
+                logger.info("✅ Container completed successfully.")
                 return
             else:
                 logger.info(
