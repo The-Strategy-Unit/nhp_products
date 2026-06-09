@@ -69,7 +69,7 @@ Optional arguments that have been added to main pipeline:
 Example usage, running the hrg aggregation AND including the baseline:
 
 ```bash
-uv run python -m --agg-type hrg --include-baseline nhpy.pipeline aggregated-model-results/v4.x/RXX/test/20250101_100000/
+uv run python -m  nhpy.pipeline --agg-type hrg --include-baseline aggregated-model-results/v4.x/RXX/test/20250101_100000/
 ```
 
 ```mermaid
