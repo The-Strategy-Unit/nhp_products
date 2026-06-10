@@ -73,24 +73,6 @@ def compare_results(df_old: pd.DataFrame, df_new: pd.DataFrame) -> pd.DataFrame:
     return combined
 
 
-def agg_stepcounts(stepcounts: pd.DataFrame) -> pd.Series:
-    """Aggregates step_counts in old format of results JSON, grouping by 'change_factor',
-    'measure' and 'strategy' and summing the 'principal' column
-    TODO: Deprecate function; we should be working with Parquet format of model results
-
-    Args:
-        stepcounts (pd.DataFrame): The step counts from the old format of the results JSON
-
-    Returns:
-        pd.DataFrame: Aggregated step counts
-    """
-    return (
-        stepcounts.groupby(["change_factor", "measure", "strategy"])["principal"]
-        .sum()
-        .astype(int)
-    )
-
-
 def compare_default(
     df1: pd.DataFrame,
     df2: pd.DataFrame,
