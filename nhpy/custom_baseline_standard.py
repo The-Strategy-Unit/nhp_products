@@ -1,3 +1,33 @@
+"""
+Generate custom detailed baseline for a model scenario.
+
+This module produces custom detailed baseline for IP, OP, and AAE, for a given model
+scenario in CSV format. This is intended to go with the "standard" agg type.
+Outputs are stored in a `data/` folder.
+
+Usage:
+
+    # CLI usage
+    uv run python -m nhpy.custom_baseline_standard \
+        aggregated-model-results/v4.0/RXX/test/20250101_100000/
+
+You may also provide optional arguments, --ip_sites --op_sites and --aae_sites to
+filter the baseline to specific sites only for each activity type. If supplying
+more than one site, do so in this format: SITEA,SITEB.
+If no sites are provided, defaults to all sites.
+
+Prerequisites:
+    - Authentication via Azure CLI is required
+
+Configuration:
+    Set environment variables: AZ_STORAGE_EP, AZ_STORAGE_RESULTS, AZ_STORAGE_DATA
+
+Exit codes:
+    0: Success
+    2: Error occurred (authentication, network, etc.)
+    130: Operation cancelled (Ctrl+C)
+"""
+
 import argparse
 import os
 import sys
