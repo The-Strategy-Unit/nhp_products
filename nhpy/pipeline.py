@@ -45,6 +45,7 @@ from colorama import Fore, Style, init
 from nhpy.add_and_suppress_baseline import add_baseline_to_detailed_results
 from nhpy.check_full_results import check_full_results
 from nhpy.config import ExitCodes
+from nhpy.custom_baseline_standard import produce_custom_suppressed_baseline
 from nhpy.run_detailed_results import run_detailed_results
 from nhpy.run_full_results import run_scenario_with_full_results
 from nhpy.utils import initialise_connections_and_params
@@ -462,10 +463,14 @@ def main() -> int:
         )
 
         if args.include_baseline:
-            add_baseline_to_detailed_results(
-                results_paths, context, args.agg_type, output_dir
-            )
-
+            if args.agg_type == "hrg":
+                add_baseline_to_detailed_results(
+                    results_paths, context, args.agg_type, str(output_dir)
+                )
+            if args.agg_type == "standard":
+                produce_custom_suppressed_baseline(
+                    context, args.agg_type, str(output_dir)
+                )  # TODO: implement site filter in main pipeline. See issue #123
         logger.info(f"{SUCCESS_COLOR}Pipeline completed successfully!{RESET}")
         logger.info(f"{SUCCESS_COLOR}Detailed results saved to:{RESET} {output_dir}")
 
