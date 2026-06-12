@@ -84,7 +84,10 @@ def add_baseline_to_detailed_results(
     }  # TODO: This is currently hardcoded to only work for the hrg agg_type
     for activity_type in ["ip", "op", "aae"]:
         if agg_type == "standard":
-            config = DetailedResultsStandard()
+            raise NotImplementedError(
+                "Including baseline not implemented for standard \
+                agg type. Use custom_baseline_standard module instead"
+            )
         if agg_type == "hrg":
             config = DetailedResultsHRG()
         detailed_results = pd.read_parquet(results_paths[f"{activity_type}_parquet"])
