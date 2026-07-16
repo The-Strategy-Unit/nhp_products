@@ -91,6 +91,24 @@ def get_memory_usage():
     return memory_info.rss / (1024 * 1024)  # Convert bytes to MB
 
 
+def _clear_cache_and_gc(label: str) -> None:
+    """Clear the model results cache and run garbage collection.
+
+    Args:
+        label: Activity label for logging (e.g. "IP", "OP", "A&E").
+    """
+    if "az" in sys.modules and hasattr(sys.modules["az"], "_model_results_cache"):
+        cache = sys.modules["az"]._model_results_cache
+        clear_method = getattr(cache, "clear", None)
+        if callable(clear_method):
+            clear_method()
+    gc.collect()
+    logger.info(
+        f"Memory cleaned after {label} processing, "
+        f"current usage: {get_memory_usage():.2f} MB"
+    )
+
+
 # Load environment variables
 _load_dotenv_file(interpolate=False)
 
@@ -237,17 +255,7 @@ def _process_inpatient_results(
 
     # Clean up memory
     del model_runs_df, model_runs, original_df, reference_df
-    if "az" in sys.modules and hasattr(sys.modules["az"], "_model_results_cache"):
-        # Clear the cache after processing
-        cache = sys.modules["az"]._model_results_cache
-        # Use getattr to get the clear method and call it if it exists
-        clear_method = getattr(cache, "clear", None)
-        if callable(clear_method):
-            clear_method()
-    gc.collect()
-    logger.info(
-        f"Memory cleaned after IP processing, current usage: {get_memory_usage():.2f} MB"
-    )
+    _clear_cache_and_gc("IP")
 
 
 def _process_outpatient_results(
@@ -388,17 +396,7 @@ def _process_outpatient_results(
 
     # Clean up memory
     del op_model_runs_df, op_model_runs, original_df, reference_df
-    if "az" in sys.modules and hasattr(sys.modules["az"], "_model_results_cache"):
-        # Clear the cache after processing
-        cache = sys.modules["az"]._model_results_cache
-        # Use getattr to get the clear method and call it if it exists
-        clear_method = getattr(cache, "clear", None)
-        if callable(clear_method):
-            clear_method()
-    gc.collect()
-    logger.info(
-        f"Memory cleaned after OP processing, current usage: {get_memory_usage():.2f} MB"
-    )
+    _clear_cache_and_gc("OP")
 
 
 def _validate_aae_metric(
@@ -552,17 +550,7 @@ def _process_aae_results(
 
     # Clean up memory
     del ae_model_runs_df, ae_model_runs, original_df, reference_df
-    if "az" in sys.modules and hasattr(sys.modules["az"], "_model_results_cache"):
-        # Clear the cache after processing
-        cache = sys.modules["az"]._model_results_cache
-        # Use getattr to get the clear method and call it if it exists
-        clear_method = getattr(cache, "clear", None)
-        if callable(clear_method):
-            clear_method()
-    gc.collect()
-    logger.info(
-        f"Memory cleaned after A&E processing, current usage: {get_memory_usage():.2f} MB"
-    )
+    _clear_cache_and_gc("A&E")
 
 
 def run_detailed_results(

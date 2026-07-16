@@ -135,8 +135,8 @@ def earlier_minor(v: str, major: int, minor: int) -> bool:
     return (parsed.major, parsed.minor) < (major, minor)
 
 
-def latest(versions: list[str]) -> str | None:
-    return max(versions, key=lambda v: Version(v.lstrip("v")), default=None)
+def latest(versions: list[str]) -> str:
+    return max(versions, key=lambda v: Version(v.lstrip("v")))
 
 
 def find_latest_version(container_client: ContainerClient, version: str) -> str:

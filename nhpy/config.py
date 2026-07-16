@@ -9,6 +9,9 @@ application.
 
 import pandas as pd
 
+# %%
+DATASET_PATH_PARTS = 4  # aggregated-model-results/{version}/{dataset}/...
+
 
 # %%
 # Exit codes

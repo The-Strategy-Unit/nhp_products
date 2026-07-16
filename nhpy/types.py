@@ -8,7 +8,7 @@ used throughout the application.
 
 # %%
 # Imports
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 from azure.storage.blob import ContainerClient
 from pandas import DataFrame
@@ -22,6 +22,7 @@ class ScenarioPaths(TypedDict):
     aggregated_results_path: str
     full_results_path: str
     original_datetime: str
+    model_run_id: NotRequired[str]
 
 
 class EnvironmentConfig(TypedDict):

@@ -217,7 +217,12 @@ def _load_environment_variables() -> EnvironmentConfig:
     """
     _load_dotenv_file()
 
-    required_vars = ["AZ_STORAGE_EP", "AZ_STORAGE_RESULTS", "AZ_STORAGE_DATA"]
+    required_vars = [
+        "AZ_STORAGE_EP",
+        "AZ_STORAGE_RESULTS",
+        "AZ_STORAGE_DATA",
+        "AZ_TABLE_NAME",
+    ]
 
     return _validate_environment_variables(required_vars)
 

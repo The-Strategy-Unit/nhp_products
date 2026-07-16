@@ -302,6 +302,7 @@ def run_scenario_with_full_results(
 
     # Construct and return result paths
     full_results_params = _construct_results_path(params=mod_params)
+    full_results_params["model_run_id"] = container_metadata["model_run_id"]
 
     return full_results_params
 

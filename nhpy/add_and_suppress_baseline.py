@@ -24,8 +24,9 @@ def suppress_small_counts(
     count_col: str = "baseline",
     threshold: int = 5,
 ) -> pd.DataFrame:
-    """Suppression of small counts in detailed results. Filters dataframe to only rows with
-    small numbers, then groups together values in specified columns and re-aggregates.
+    """Suppression of small counts in detailed results. Filters dataframe to only rows
+    with small numbers, then groups together values in specified columns and
+    re-aggregates.
 
     Args:
         df (pd.DataFrame): Processed detailed results
@@ -61,13 +62,15 @@ def suppress_small_counts(
 def add_baseline_to_detailed_results(
     results_paths: dict[str, str], context: ProcessContext, agg_type: str, output_dir: str
 ):
-    """Adds baseline to detailed results and suppresses rows where counts are <5 in baseline,
+    """Adds baseline to detailed results and suppresses rows where counts are <5
+    in baseline,
     grouping together by the suppress_cols
 
     Args:
         results_paths (dict[str, str]): Results paths, returned from
         nhpy.run_detailed_results.run_detailed_results
-        context (ProcessContext): Processing context with connection information and metadata
+        context (ProcessContext): Processing context with connection information and
+        metadata
         agg_type (str): Type of aggregation: hrg or standard
         output_dir (str): Output directory to save results in
     """
