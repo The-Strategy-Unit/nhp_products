@@ -40,6 +40,12 @@ minor edits, and resubmits the params to the model API, this time with
 `save_full_model_results` set to `True`. Check the `nhpy.run_full_results`
 module docstring for usage.
 
+### Produce custom detailed baseline (standard agg type)
+
+This module produces a custom detailed baseline with custom age groups, length of stay
+(LOS) groups, and also suppresses small numbers by grouping together rows where there are 
+counts of <5. Check the `nhpy.custom_baseline_standard` module docstring for usage.
+
 ## Pipeline
 
 The `nhpy/pipeline.py` module streamlines generating detailed NHP model results
@@ -64,12 +70,12 @@ Optional arguments that have been added to main pipeline:
 
 `--agg-type`: Options: `standard` and `hrg`. Defaults to `standard`. Changes aggregation columns and age_groups used in detailed results.
 
-`--include-baseline`: Whether or not to include the (suppressed) baseline. Only works for IP currently
+`--include-baseline`: Whether or not to include the (suppressed) baseline.
 
 Example usage, running the hrg aggregation AND including the baseline:
 
 ```bash
-uv run python -m --agg-type hrg --include-baseline nhpy.pipeline aggregated-model-results/v4.x/RXX/test/20250101_100000/
+uv run python -m  nhpy.pipeline --agg-type hrg --include-baseline aggregated-model-results/v4.x/RXX/test/20250101_100000/
 ```
 
 ```mermaid

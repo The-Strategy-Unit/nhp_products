@@ -9,6 +9,22 @@ import pandas as pd
 n_runs = 256
 
 
+def filter_sites(df: pd.DataFrame, sites_to_filter: list[str] = ["ALL"]) -> pd.DataFrame:
+    """Filters data only to desired sites. Note that we don't check if the sites are valid
+
+    Args:
+        df (pd.DataFrame): Dataset to filter, should have "sitetret" column
+        sites_to_filter (list[str]): Which sites to filter to. Format should be
+        ["SITEA", "SITEB"] OR ["ALL"] if no filtering required. Defaults to ["ALL"].
+
+    Returns:
+        pd.DataFrame: Filtered data
+    """
+    if "ALL" in sites_to_filter:
+        return df
+    return df[df["sitetret"].isin(sites_to_filter)]
+
+
 # Adapted from InpatientsModel.process_results
 def process_ip_results(data: pd.DataFrame, los_groups: defaultdict) -> pd.DataFrame:
     """
