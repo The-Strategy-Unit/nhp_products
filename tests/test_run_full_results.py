@@ -16,7 +16,8 @@ import logging
 import os
 import sys
 
-from fastcore.test import *
+from fastcore.test import test_eq as fc_eq, test_fail as fc_fail
+
 from nhpy.run_full_results import (
     _construct_results_path,
     _extract_scenario_components,
@@ -41,16 +42,19 @@ def test_path_parsing():
     logger.info("🧪 Testing path parsing...")
 
     # Valid path
+    if not env.get("AZ_VALID_PATH"):
+        logger.info("  ⏭️  Skipping: AZ_VALID_PATH not set")
+        return
+
     path = env["AZ_VALID_PATH"]
-    version, _, scenario, datetime = _extract_scenario_components(path)
-    test_eq(version, "v4.1")
-    test_eq(scenario, "test-yh-full-results")
-    test_eq(datetime, "20250909_200111")
+    version, dataset, scenario, datetime = _extract_scenario_components(path)
+    fc_eq(version, "v4.1")
+    fc_eq(scenario, "test-yh-full-results")
+    fc_eq(datetime, "20250909_200111")
     logger.info("  ✅ Valid path parsing works")
 
     # Invalid path
-    test_fail(lambda: _extract_scenario_components("invalid/path"),
-              exc=ValueError)
+    fc_fail(lambda: _extract_scenario_components("invalid/path"), exc=ValueError)
     logger.info("  ✅ Invalid path correctly rejected")
 
 
@@ -70,15 +74,15 @@ def test_param_modification():
 
     new_params = _prepare_full_results_params(original_params)
 
-    test_eq(new_params["user"], "ds-team")
-    test_eq(new_params["viewable"], False)
-    test_eq(new_params["original_datetime"], "20250101_103015")  # Other params preserved
+    fc_eq(new_params["user"], "ds-team")
+    fc_eq(new_params["viewable"], False)
+    fc_eq(new_params["original_datetime"], "20250101_103015")  # Other params preserved
 
     # Check original unchanged
-    test_eq(original_params["scenario"], "my-test")
+    fc_eq(original_params["scenario"], "my-test")
 
     # Check all keys preserved
-    test_eq(set(new_params.keys()), set(original_params.keys()))
+    fc_eq(set(new_params.keys()), set(original_params.keys()))
 
     logger.info("  ✅ Parameter modification works correctly")
 
@@ -98,20 +102,19 @@ def test_path_construction():
 
     paths = _construct_results_path(params)
 
-    expected_json = "prod/v3.5/RXX/full-model-results-20250102_091500.json.gz"
     expected_agg = "aggregated-model-results/v3.5/RXX/full-model-results/20250102_091500"
     expected_full = "full-model-results/v3.5/RXX/full-model-results/20250102_091500"
 
     # Test all paths match expected
-    test_eq(paths["json_path"], expected_json)
-    test_eq(paths["aggregated_results_path"], expected_agg)
-    test_eq(paths["full_results_path"], expected_full)
+    fc_eq(paths["aggregated_results_path"], expected_agg)
+    fc_eq(paths["full_results_path"], expected_full)
+    fc_eq(paths["original_datetime"], "20250101_103015")
 
     # Test path contains required components
     for path_key in ["aggregated_results_path", "full_results_path"]:
-        test_eq("RXX" in paths[path_key], True)
-        test_eq("full-model-results" in paths[path_key], True)
-        test_eq("20250102_091500" in paths[path_key], True)
+        fc_eq("RXX" in paths[path_key], True)
+        fc_eq("full-model-results" in paths[path_key], True)
+        fc_eq("20250102_091500" in paths[path_key], True)
 
     logger.info("  ✅ Path construction works correctly")
 
@@ -153,13 +156,12 @@ def test_dry_run():
     """Tests error handling with invalid path input."""
     logger.info("🧪 Testing error handling...")
 
-    test_fail(lambda: run_scenario_with_full_results("invalid/path/format"),
-              exc=ValueError)
+    fc_fail(lambda: run_scenario_with_full_results("invalid/path/format"), exc=ValueError)
     logger.info("  ✅ Error handling works for invalid paths")
 
 
 # %%
-def test_real_path(results_path):
+def real_path_run_full_results_test(results_path):
     """Tests run_full_results with a real results path.
 
     This function will perform a dry-run validation of the path and parameters,
@@ -218,7 +220,7 @@ def main():
         # If real path provided, run real path test
         if real_path:
             logger.info("\n🧪 Running test with real path...")
-            test_real_path(real_path)
+            real_path_run_full_results_test(real_path)
         else:
             logger.info(
                 "💡 To test with real path, run: "

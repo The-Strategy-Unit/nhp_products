@@ -25,9 +25,9 @@ from nhpy.utils import configure_logging, get_logger
 try:
     from nhpy.run_detailed_results import (
         _check_results_exist,
-        _initialise_connections_and_params,
         run_detailed_results,
     )
+    from nhpy.utils import initialise_connections_and_params
 except ImportError as e:
     print(f"❌ Import error: {e}")
     print("💡 Private function may not be exported - check module structure")
@@ -142,7 +142,7 @@ def test_public_api():
 
 
 # %%
-def test_real_path(results_path):
+def real_path_detailed_results_test(results_path):
     """Tests run_detailed_results with a real results path.
 
     This function will validate the path but NOT run detailed results processing.
@@ -199,7 +199,7 @@ def main():
         # If real path provided, run real path test
         if real_path:
             logger.info("\n🧪 Running test with real path...")
-            test_real_path(real_path)
+            real_path_detailed_results_test(real_path)
         else:
             logger.info(
                 "💡 To test with real path, run: "

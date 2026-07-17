@@ -16,7 +16,15 @@ import logging
 import os
 import sys
 
-from fastcore.test import *
+from fastcore.test import test_eq as fc_eq
+from fastcore.test import test_is as fc_is
+from fastcore.test import test_fail as fc_fail
+from fastcore.test import test_ne as fc_ne
+from fastcore.test import test_close as fc_close
+from fastcore.test import test_warns as fc_warns
+from fastcore.test import test_stdout as fc_stdout
+from fastcore.test import test_fig_exists as fc_fig_exists
+from fastcore.test import test_eq_type as fc_eq_type
 from nhpy.utils import configure_logging, get_logger
 
 # %%
@@ -70,33 +78,33 @@ def test_blob_path_analysis():
 
     # Test 1: Full results (has model_run directories with parquet files)
     is_full, explanation = _analyse_blob_paths_for_full_results(FULL_RESULTS_PATHS)
-    test_eq(is_full, True)
-    test_eq(explanation, "✅")
+    fc_eq(is_full, True)
+    fc_eq(explanation, "✅")
     logger.info("  ✅ Full results detection works")
 
     # Test 2: No directories (flat structure)
     is_full, explanation = _analyse_blob_paths_for_full_results(FLAT_PATHS)
-    test_eq(is_full, False)
-    test_is(type(explanation), str)
-    test_eq("No directories found" in explanation, True)
+    fc_eq(is_full, False)
+    fc_is(type(explanation), str)
+    fc_eq("No directories found" in explanation, True)
     logger.info("  ✅ Flat structure detection works")
 
     # Test 3: Has directories but no model_run
     is_full, explanation = _analyse_blob_paths_for_full_results(NO_MODEL_RUN_PATHS)
-    test_eq(is_full, False)
-    test_eq("no 'model_run=' subdirectories" in explanation, True)
+    fc_eq(is_full, False)
+    fc_eq("no 'model_run=' subdirectories" in explanation, True)
     logger.info("  ✅ No model_run detection works")
 
     # Test 4: Has model_run directories but no parquet files
     is_full, explanation = _analyse_blob_paths_for_full_results(NO_PARQUET_PATHS)
-    test_eq(is_full, False)
-    test_eq("no parquet file" in explanation, True)
+    fc_eq(is_full, False)
+    fc_eq("no parquet file" in explanation, True)
     logger.info("  ✅ No parquet file detection works")
 
     # Test 5: Empty paths list
     is_full, explanation = _analyse_blob_paths_for_full_results([])
-    test_eq(is_full, False)
-    test_eq("No directories found" in explanation, True)
+    fc_eq(is_full, False)
+    fc_eq("No directories found" in explanation, True)
     logger.info("  ✅ Empty paths handling works")
 
 
@@ -112,8 +120,8 @@ def test_blob_analysis_edge_cases():
         "another/regular/file.csv",
     ]
     is_full, explanation = _analyse_blob_paths_for_full_results(mixed_paths)
-    test_eq(is_full, True)
-    test_eq(explanation, "✅")
+    fc_eq(is_full, True)
+    fc_eq(explanation, "✅")
     logger.info("  ✅ Mixed paths analysis works")
 
     # Test with model_run but wrong parquet file name
@@ -122,8 +130,8 @@ def test_blob_analysis_edge_cases():
         "some/path/model_run=2/data.parquet",
     ]
     is_full, explanation = _analyse_blob_paths_for_full_results(wrong_parquet_paths)
-    test_eq(is_full, False)
-    test_eq("no parquet file" in explanation, True)
+    fc_eq(is_full, False)
+    fc_eq("no parquet file" in explanation, True)
     logger.info("  ✅ Wrong parquet file name detection works")
 
 
@@ -147,9 +155,9 @@ def test_error_handling():
     """Tests error handling with invalid scenario paths."""
     logger.info("🧪 Testing error handling...")
 
-    # Use fastcore.test's test_fail to validate exception raising
+    # Use fastcore.test's fail to validate exception raising
     from azure.core.exceptions import ResourceNotFoundError
-    test_fail(lambda: check_full_results("invalid/path/format"),
+    fc_fail(lambda: check_full_results("invalid/path/format"),
               exc=ResourceNotFoundError)
     logger.info("  ✅ Invalid path ResourceNotFoundError correctly raised")
 
@@ -160,13 +168,13 @@ def test_path_validation():
     logger.info("🧪 Testing path validation...")
 
     # Test with empty string
-    test_fail(lambda: check_full_results(""),
+    fc_fail(lambda: check_full_results(""),
               exc=(ValueError, TypeError),
               contains="path")
     logger.info("  ✅ Empty path correctly rejected")
 
     # Test with None (will fail at _load_scenario_params, not type checking)
-    test_fail(lambda: check_full_results(None),
+    fc_fail(lambda: check_full_results(None),
               exc=(ValueError, TypeError, AttributeError))
     logger.info("  ✅ None path correctly rejected")
 
@@ -191,12 +199,12 @@ def test_public_api():
     params = list(sig.parameters.keys())
     expected_params = ["scenario_path", "account_url", "container_name"]
 
-    test_eq(params, expected_params)
+    fc_eq(params, expected_params)
     logger.info("  ✅ Function signature correct")
 
 
 # %%
-def test_real_path(results_path):
+def check_full_results_with_real_path(results_path):
     """Tests check_full_results with a real results path.
 
     Args:
@@ -244,7 +252,7 @@ def main():
         # If real path provided, run real path test
         if real_path:
             logger.info("\n🧪 Running test with real path...")
-            test_real_path(real_path)
+            check_full_results_with_real_path(real_path)
         else:
             logger.info(
                 "💡 To test with real Azure Storage, run: "
