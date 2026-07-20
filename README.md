@@ -43,7 +43,7 @@ module docstring for usage.
 ### Produce custom detailed baseline (standard agg type)
 
 This module produces a custom detailed baseline with custom age groups, length of stay
-(LOS) groups, and also suppresses small numbers by grouping together rows where there are 
+(LOS) groups, and also suppresses small numbers by grouping together rows where there are
 counts of <5. Check the `nhpy.custom_baseline_standard` module docstring for usage.
 
 ## Pipeline
