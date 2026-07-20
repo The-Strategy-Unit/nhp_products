@@ -289,8 +289,17 @@ def _resolve_existing_copy(scenario_path: str) -> str | None:
         return None
 
     logger.info(f"{INFO_COLOR}Full results copy found in ATS (RowKey: {copy_id}){RESET}")
-    partition_key = scenario_path.split("/")[2]
+    partition_key = scenario_path.split("/")[2]  # e.g. RXX
     copy_entity = get_entity(partition_key=partition_key, row_key=copy_id)
+
+    if not copy_entity:
+        original_entity = find_entity_by_path(scenario_path)
+        if original_entity:
+            set_full_results_copy(
+                partition_key=original_entity["PartitionKey"],
+                row_key=original_entity["RowKey"],
+                copy_row_key="",
+            )
 
     if copy_entity and copy_entity.get("aggregated_results_path"):
         copy_path = copy_entity["aggregated_results_path"]
