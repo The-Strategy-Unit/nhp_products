@@ -54,7 +54,6 @@ from azure.core.exceptions import (
 from nhpy.az import (
     connect_to_container,
     find_latest_version,
-    get_azure_credentials,
     list_all_versions,
     load_parquet_file,
 )
