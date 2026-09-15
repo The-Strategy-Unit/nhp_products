@@ -269,6 +269,7 @@ def _compare_op_mitigators(
     mitigator_names = None
     for version in versions:
         op = _read_partition(container_client, f"{version}/op/fyear={year}/")
+        op["dataset"] = "full"
         op_mitigators = get_all_op_mitigators(op)
         mitigator_dict[version] = op_mitigators
         mitigator_names = op_mitigators.columns
@@ -290,6 +291,7 @@ def _compare_aae_mitigators(
     mitigator_names = None
     for version in versions:
         aae = _read_partition(container_client, f"{version}/aae/fyear={year}/")
+        aae["dataset"] = "full"
         aae_mitigators = get_all_ae_mitigators(aae)
         mitigator_dict[version] = aae_mitigators
         mitigator_names = aae_mitigators.columns
@@ -327,7 +329,7 @@ def run_qa_checks(
             False if any mismatch was found (CSVs are still written either way)
     """
     account_url, container_name = get_azure_credentials(
-        account_url, container_name=os.getenv("AZ_STORAGE_DATA")
+        account_url, container_name=os.getenv("AZ_STORAGE_DATA", container_name)
     )
     container_client = connect_to_container(account_url, container_name)
 
@@ -343,7 +345,7 @@ def run_qa_checks(
     all_matched = True
 
     # Inpatients
-    logger.info("Comparing inpatients data...")
+    logger.info("Comparing IP data...")
     full_df_ip = _compare_activity(
         container_client, versions, year, "ip", _aggregate_data_ip
     )
@@ -356,7 +358,7 @@ def run_qa_checks(
     full_df_ip.to_csv(out_dir / f"{today_date}_QA_ip.csv")
 
     # Outpatients
-    logger.info("Comparing outpatients data...")
+    logger.info("Comparing OP data...")
     full_df_op = _compare_activity(
         container_client, versions, year, "op", _aggregate_data_op
     )
