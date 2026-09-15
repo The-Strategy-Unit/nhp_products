@@ -328,10 +328,11 @@ def run_qa_checks(
         bool: True if dev and the compared version matched everywhere,
             False if any mismatch was found (CSVs are still written either way)
     """
-    account_url, container_name = get_azure_credentials(
-        account_url, container_name=os.getenv("AZ_STORAGE_DATA", container_name)
-    )
-    container_client = connect_to_container(account_url, container_name)
+ account_url = account_url or os.getenv("AZ_STORAGE_EP")
+  container_name = container_name or os.getenv("AZ_STORAGE_DATA")
+  if not account_url or not container_name:
+      raise ValueError("AZ_STORAGE_EP and AZ_STORAGE_DATA are required")
+  container_client = connect_to_container(account_url, container_nam
 
     if compare_version is None:
         compare_version = _latest_version(container_client)
