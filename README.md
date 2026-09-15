@@ -154,10 +154,12 @@ to reconcile model data with their own locally held data.
 
 ### Prerelease data checks
 
-Databricks notebook in `notebooks/QA_prerelease-data-checks` for comparing `dev`
-model data with the most recently released model data. This notebook checks for
-differences in counts of mitigators, and in activity by Point of Delivery (PoD)
-for specific trusts.
+The `nhpy.qa.data` module can be used  for comparing `dev`
+model data with the most recently released model data. This module checks for
+differences in counts of mitigators, and in activity by Point of Delivery (pod)
+across the entire dataset.
+
+Run it with `uv run python -m nhpy.qa.data`
 
 ### Run previous scenarios on dev
 
