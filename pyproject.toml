@@ -40,7 +40,7 @@ dependencies = [
 
 # Explicitly specify which packages to include
 [tool.setuptools]
-packages = ["nhpy"]           # Only include nhpy, exclude notebooks
+packages = ["nhpy", "nhpy.qa"]           # Only include nhpy, exclude notebooks
 
 [project.optional-dependencies]
 dev = [
