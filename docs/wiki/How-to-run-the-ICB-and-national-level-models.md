@@ -2,9 +2,9 @@
 
 # How do the ICB/national level models work?
 
-nhp_model code is a package on GitHub. We tag specific versions of the nhp_model, e.g. v4.2.1.
+nhp_model code is a package on GitHub. We tag specific versions of the nhp_model; nhp_model_databricks currently uses v6.0.0.
 
-nhp_model_databricks has as its package dependency the tagged version of nhp_model code, available from GitHub. So for example, you can specify v4.2.1 or v4.1.0 of nhp_model. This is currently specified in the pyproject.toml file.
+nhp_model_databricks has as its package dependency the tagged version of nhp_model code, available from GitHub. The version is specified in the pyproject.toml file.
 
 nhp_model_databricks contains specific Data loading classes for ICB, national and provider level model runs. These tell the nhp_model code to load the data for these runs from Databricks.
 
@@ -33,10 +33,10 @@ nhp_model_databricks basically uses the same extracted parquet data as the provi
 
 # How to develop ICB/national level models 
 
-(this information is correct as of October 2025 - it's very flawed but we're working on improving this)
+(These internal operational details are retained from October 2025. Only the public dependency version was rechecked on 7 October 2026.)
 
 1. Develop in nhp_model. 
-1. Once PR approved and pushed to main, when working in nhp_model_databricks, you need to change references to a specific nhp_model version e.g. v4.2.1 to main instead. 
+1. Once PR approved and pushed to main, when working in nhp_model_databricks, you need to change the tagged nhp_model reference (currently v6.0.0) to main instead.
 1. Make your changes to the code in nhp_model_databricks. 
 1. Deploy the nhp_model_databricks workflow to dev on Databricks. Then run it.
 1. If nhp_model_databricks workflow runs successfully, make PR

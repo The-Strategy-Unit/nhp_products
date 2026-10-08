@@ -21,8 +21,9 @@ config:
   look: classic
 ---
 flowchart TD
-    n1["changes to <br>**nhp_data**<br>functionality"] -->  n2(["Impact on inputs data?"]) & n4(["Impact on model data?"])
+    n1["changes to <br>**nhp_data**<br>functionality"] -->  n2(["Impact on inputs data?"]) & n4(["Impact on model data?"]) & n8(["Impact on functional-area data?"])
     n2 -- Also update --> n6["nhp_inputs<br>tpma-explorer<br>"]
     n4 -- Also update --> n7["nhp_model_databricks<br>nhp_model<br> nhp_products"]
+    n8 -- Also update --> n9["nhp_capacity_conversion_logic"]
     n1@{ shape: rect}
 ```
