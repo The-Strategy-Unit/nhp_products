@@ -136,7 +136,7 @@ def test_output_dir_creation():
 
 
 # %%
-def test_real_path(results_path):
+def pipeline_with_real_path(results_path):
     """Tests pipeline with a real results path.
 
     This function will validate the path format and check if all required
@@ -194,7 +194,7 @@ def main_test():
         # If real path provided, run real path test
         if real_path:
             logger.info("\n🧪 Running test with real path...")
-            test_real_path(real_path)
+            pipeline_with_real_path(real_path)
         else:
             logger.info(
                 "💡 To test with real path, run: "
