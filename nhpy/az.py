@@ -149,7 +149,7 @@ def find_latest_version(container_client: ContainerClient, version: str) -> str:
 
         same = [v for v in all_versions if same_minor(v, major, minor)]
         if same:
-            return latest(same)
+            return max(same, key=lambda v: Version(v.lstrip("v")))
 
         earlier = [v for v in all_versions if earlier_minor(v, major, minor)]
         return latest(earlier) or "N/A"
@@ -213,7 +213,10 @@ def load_parquet_file(
     try:
         blob_client = container_client.get_blob_client(path_to_file)
         download_stream = blob_client.download_blob()
-        stream_object = io.BytesIO(download_stream.readall())
+        blob_content = download_stream.readall()
+        if not isinstance(blob_content, bytes):
+            raise TypeError("Expected binary parquet content from Azure Blob Storage")
+        stream_object = io.BytesIO(blob_content)
         data = pd.read_parquet(stream_object)
 
         return data
@@ -449,7 +452,10 @@ def load_agg_params(
     try:
         blob_client = container_client.get_blob_client(blob_name)
         download_stream = blob_client.download_blob()
-        stream_object = io.BytesIO(download_stream.readall())
+        blob_content = download_stream.readall()
+        if not isinstance(blob_content, bytes):
+            raise TypeError("Expected binary JSON content from Azure Blob Storage")
+        stream_object = io.BytesIO(blob_content)
         results_json = json.load(stream_object)
 
         return results_json

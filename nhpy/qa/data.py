@@ -50,6 +50,7 @@ from azure.core.exceptions import (
     ClientAuthenticationError,
     ResourceNotFoundError,
 )
+from packaging.version import Version
 
 from nhpy.az import (
     connect_to_container,
@@ -139,13 +140,10 @@ def _latest_version(container_client) -> str:
         raise EmptyContainerError(
             container_name=container_client.container_name, path="/"
         )
-    # sorts correctly for simple vMAJOR.MINOR.PATCH strings of equal width;
-    # falls back to lexicographic order otherwise
     try:
-        from packaging.version import Version
-
         return max(versions, key=lambda v: Version(v.lstrip("v")))
     except Exception:
+        # Preserve support for legacy folder names that are not valid versions.
         return sorted(versions)[-1]
 
 
@@ -196,26 +194,27 @@ def _compare_activity(
     aggregate_fn,
 ) -> pd.DataFrame:
     """Build a per-trust, per-pod comparison table for ip/op/aae activity."""
+    if not versions:
+        raise ValueError("At least one version is required for activity comparison")
     trusts = _list_datasets(container_client, versions[0], activity_type, year)
-    data_dict = {}
+    data_dict: dict[str, pd.DataFrame] = {}
     for trust in trusts:
-        df = None
+        aggregates = []
         for version in versions:
             prefix = f"{version}/{activity_type}/fyear={year}/dataset={trust}/"
             data = _read_partition(container_client, prefix)
-            agg = aggregate_fn(data, version)
-            if df is None:
-                df = agg.copy()
-            else:
-                df = df.merge(agg, left_index=True, right_index=True, how="outer").fillna(
-                    0
-                )
-                numeric_cols = df.select_dtypes(include="number").columns
-                df[numeric_cols] = df[numeric_cols].astype(int)
+            aggregates.append(aggregate_fn(data, version))
+        df = aggregates[0].copy()
+        for aggregate in aggregates[1:]:
+            df = df.merge(
+                aggregate, left_index=True, right_index=True, how="outer"
+            ).fillna(0)
+            numeric_cols = df.select_dtypes(include="number").columns
+            df[numeric_cols] = df[numeric_cols].astype(int)
         df["trust"] = trust
         data_dict[trust] = df
     index_cols = ["trust", "pod"] if activity_type != "aae" else ["trust", "pod", "group"]
-    full_df = pd.concat(data_dict.values()).reset_index().set_index(index_cols)
+    full_df = pd.concat(list(data_dict.values())).reset_index().set_index(index_cols)
     return full_df
 
 
@@ -264,14 +263,12 @@ def _compare_ip_mitigators(
 def _compare_op_mitigators(
     container_client, versions: list[str], year: int
 ) -> tuple[pd.DataFrame, pd.Index]:
-    mitigator_dict = {}
-    mitigator_names = None
+    mitigator_dict: dict[str, pd.DataFrame] = {}
     for version in versions:
         op = _read_partition(container_client, f"{version}/op/fyear={year}/")
         op["dataset"] = "full"
         op_mitigators = get_all_op_mitigators(op)
         mitigator_dict[version] = op_mitigators
-        mitigator_names = op_mitigators.columns
     dev, latest = versions[0], versions[-1]
     combined = mitigator_dict[dev].merge(
         mitigator_dict[latest],
@@ -280,20 +277,18 @@ def _compare_op_mitigators(
         how="outer",
         suffixes=(f"_{dev}", f"_{latest}"),
     )
-    return combined, mitigator_names
+    return combined, mitigator_dict[latest].columns
 
 
 def _compare_aae_mitigators(
     container_client, versions: list[str], year: int
 ) -> tuple[pd.DataFrame, pd.Index]:
-    mitigator_dict = {}
-    mitigator_names = None
+    mitigator_dict: dict[str, pd.DataFrame] = {}
     for version in versions:
         aae = _read_partition(container_client, f"{version}/aae/fyear={year}/")
         aae["dataset"] = "full"
         aae_mitigators = get_all_ae_mitigators(aae)
         mitigator_dict[version] = aae_mitigators
-        mitigator_names = aae_mitigators.columns
     dev, latest = versions[0], versions[-1]
     combined = mitigator_dict[dev].merge(
         mitigator_dict[latest],
@@ -302,7 +297,7 @@ def _compare_aae_mitigators(
         how="outer",
         suffixes=(f"_{dev}", f"_{latest}"),
     )
-    return combined, mitigator_names
+    return combined, mitigator_dict[latest].columns
 
 
 # %%
