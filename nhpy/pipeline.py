@@ -333,16 +333,8 @@ def ensure_venv() -> bool:
 
 
 # %%
-def main() -> int:
-    """
-    Main pipeline implementing the flowchart
-    https://github.com/The-Strategy-Unit/nhp_products/issues/7#issuecomment-3323738420
-    logic.
-
-    Returns:
-        int: Exit code (0 for success, non-zero for errors)
-    """
-    # Parse command-line arguments
+def _parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the pipeline."""
     parser = argparse.ArgumentParser(
         description="NHP Products Pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -381,7 +373,19 @@ def main() -> int:
     parser.add_argument(
         "--include-baseline", help="Whether to include baseline", action="store_true"
     )
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def main() -> int:
+    """
+    Main pipeline implementing the flowchart
+    https://github.com/The-Strategy-Unit/nhp_products/issues/7#issuecomment-3323738420
+    logic.
+
+    Returns:
+        int: Exit code (0 for success, non-zero for errors)
+    """
+    args = _parse_args()
 
     try:
         # Step 1: Update .venv with 'uv sync' (ensuring it exists and is activated)

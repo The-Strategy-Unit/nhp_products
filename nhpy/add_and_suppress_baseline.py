@@ -26,7 +26,8 @@ def add_baseline_to_detailed_results(
     Args:
         results_paths (dict[str, str]): Results paths, returned from
         nhpy.run_detailed_results.run_detailed_results
-        context (ProcessContext): Processing context with connection information and metadata
+        context (ProcessContext): Processing context with connection information and
+            metadata
         agg_type (str): Type of aggregation: hrg or standard
         output_dir (str): Output directory to save results in
     """

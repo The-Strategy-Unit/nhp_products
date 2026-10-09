@@ -250,6 +250,30 @@ def _process_inpatient_results(
     )
 
 
+def _validate_outpatient_results(
+    detailed_results: pd.DataFrame, actual_results: pd.DataFrame
+) -> None:
+    """Warn when detailed outpatient attendances differ beyond rounding."""
+    detailed_principal = (
+        detailed_results.round(1)
+        .xs("attendances", level="measure")
+        .sum()
+        .astype(int)
+        .loc["mean"]
+    )
+    default_principal = (
+        actual_results[actual_results["measure"] == "attendances"]["mean"]
+        .sum()
+        .astype(int)
+    )
+    if abs(default_principal - detailed_principal) > 1:
+        logger.warning(
+            "Validation mismatch: default=%s, detailed=%s",
+            default_principal,
+            detailed_principal,
+        )
+
+
 def _process_outpatient_results(
     context: ProcessContext, output_dir: str, config: DetailedResultsConfig
 ) -> None:
@@ -357,28 +381,7 @@ def _process_outpatient_results(
         op_model_runs, columns=config.op_agg_cols + ["measure"]
     )
 
-    # Validate results
-    detailed_attendances_principal = (
-        op_model_runs_df.round(1)
-        .xs("attendances", level="measure")
-        .sum()
-        .astype(int)
-        .loc["mean"]
-    )
-    default_attendances_principal = (
-        actual_results_df[actual_results_df["measure"] == "attendances"]["mean"]
-        .sum()
-        .astype(int)
-    )
-
-    # They're not always exactly the same because of rounding
-    try:
-        assert abs(default_attendances_principal - detailed_attendances_principal) <= 1
-    except AssertionError:
-        logger.warning(
-            f"""Validation mismatch: default={default_attendances_principal},
-            detailed={detailed_attendances_principal}"""
-        )
+    _validate_outpatient_results(op_model_runs_df, actual_results_df)
 
     # Save results
     op_model_runs_df.to_csv(f"{output_dir}/{scenario_name}_detailed_op_results.csv")

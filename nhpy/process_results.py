@@ -111,7 +111,7 @@ def compare_default(
 
 
 def process_stepcounts(sc: pd.DataFrame) -> pd.DataFrame:
-    """Calculates principal (mean) for step counts from parquet results, across all model runs
+    """Calculate principal step-count means across all model runs.
 
     Args:
         sc (pd.DataFrame): Step counts dataframe
