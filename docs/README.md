@@ -24,6 +24,11 @@ The initial import matches Wiki commit
 repository heads reviewed during the initial content audit. Never commit
 credentials, environment values, or sensitive records.
 
+The optional AI-assisted source review is described in
+[`wiki-review.md`](wiki-review.md). It opens a draft findings-only pull request;
+it cannot edit Wiki source, advance checkpoints, merge, or publish. A CODEOWNER
+implements the reviewed result and approves the exact final pull-request head.
+
 ## Review and publication
 
 1. Edit `docs/wiki`, and update `wiki-sources.json` when applicable.
@@ -67,7 +72,8 @@ use the Wiki UI to revert, because that would diverge from `docs/wiki`.
 
 ```bash
 uv run python scripts/sync_wiki.py validate docs/wiki
-uv run pytest tests/test_sync_wiki.py
+uv run pytest tests/test_sync_wiki.py tests/test_review_wiki.py \
+  tests/test_collect_wiki_projection.py
 
 git clone https://github.com/The-Strategy-Unit/nhp_products.wiki.git /tmp/nhp-products-wiki
 uv run python scripts/sync_wiki.py check docs/wiki /tmp/nhp-products-wiki

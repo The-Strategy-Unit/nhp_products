@@ -1,0 +1,52 @@
+name: Wiki AI human attestation
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "docs/wiki-review-proposal.md"
+      - "docs/wiki-sources.json"
+      - "docs/wiki/**"
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions: {}
+
+jobs:
+  attest:
+    name: Require current-head CODEOWNER approval
+    if: startsWith(github.event.pull_request.head.ref, 'automation/wiki-review-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out trusted base revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Read pull-request reviews
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: >-
+          gh api --paginate --slurp
+          "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews"
+          > "$RUNNER_TEMP/wiki-reviews.json"
+      - name: Require approval over the exact current head
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
+        run: |
+          if [[ "$IS_DRAFT" == "true" ]]; then
+            echo "The findings PR must remain draft until a human implements its result." >&2
+            exit 1
+          fi
+          python scripts/review_wiki.py verify-approval \
+            --reviews "$RUNNER_TEMP/wiki-reviews.json" \
+            --head-sha "$HEAD_SHA" \
+            --codeowners CODEOWNERS

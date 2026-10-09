@@ -7,6 +7,7 @@ import json
 import re
 import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import cast
 from urllib.parse import unquote, urlsplit
@@ -138,6 +139,35 @@ def _validate_manifest_entry(
     return set(cast(list[str], recorded_pages))
 
 
+def _validate_excluded_manifest_entry(
+    repository: str, entry: object, pages: dict[str, Path]
+) -> set[str]:
+    """Validate a repository that an owner deliberately excluded from review."""
+    recorded_pages = _validate_manifest_entry(repository, entry, pages, verified=False)
+    entry_data = cast(dict[str, object], entry)
+    approved_by = entry_data.get("approved_by")
+    approved_at = entry_data.get("approved_at")
+    if not isinstance(approved_by, str) or not approved_by.startswith("@"):
+        raise WikiSyncError(
+            f"Excluded manifest entry has no approving owner: {repository}"
+        )
+    if not isinstance(approved_at, str) or not approved_at.endswith("Z"):
+        raise WikiSyncError(
+            f"Excluded manifest entry has an invalid approval time: {repository}"
+        )
+    try:
+        timestamp = datetime.fromisoformat(approved_at.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise WikiSyncError(
+            f"Excluded manifest entry has an invalid approval time: {repository}"
+        ) from error
+    if timestamp.tzinfo is None:
+        raise WikiSyncError(
+            f"Excluded manifest entry has an invalid approval time: {repository}"
+        )
+    return recorded_pages
+
+
 def _validate_source_manifest(
     source: Path, pages: dict[str, Path], contents: dict[str, str]
 ) -> None:
@@ -160,13 +190,16 @@ def _validate_source_manifest(
 
     verified = manifest.get("repositories")
     unverified = manifest.get("unverified_repositories")
-    if not isinstance(verified, dict) or not isinstance(unverified, dict):
+    excluded = manifest.get("excluded_repositories", {})
+    if not all(isinstance(group, dict) for group in (verified, unverified, excluded)):
         raise WikiSyncError("Wiki source manifest repository groups must be objects")
-    overlap = sorted(verified.keys() & unverified.keys())
-    if overlap:
+    verified = cast(dict[str, object], verified)
+    unverified = cast(dict[str, object], unverified)
+    excluded = cast(dict[str, object], excluded)
+    repository_names = [*verified, *unverified, *excluded]
+    if len(repository_names) != len({name.casefold() for name in repository_names}):
         raise WikiSyncError(
-            "Manifest repositories are both verified and unverified: "
-            f"{', '.join(overlap)}"
+            "A repository appears in multiple Wiki source manifest groups"
         )
 
     recorded: dict[str, set[str]] = {}
@@ -177,6 +210,10 @@ def _validate_source_manifest(
     for repository, entry in unverified.items():
         recorded[repository.casefold()] = _validate_manifest_entry(
             repository, entry, pages, verified=False
+        )
+    for repository, entry in excluded.items():
+        recorded[repository.casefold()] = _validate_excluded_manifest_entry(
+            repository, entry, pages
         )
 
     for repository, linked_pages in _linked_repositories(contents).items():

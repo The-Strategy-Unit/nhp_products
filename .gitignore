@@ -43,6 +43,8 @@ vignettes/*.pdf
 /docs/*
 !/docs/wiki/
 !/docs/README.md
+!/docs/wiki-review.md
+!/docs/wiki-review-proposal.md
 
 # translation temp files
 po/*~
@@ -106,6 +108,7 @@ Thumbs.db
 *.csv
 *.json
 !/docs/wiki-sources.json
+!/tests/fixtures/wiki-review-evals.json
 *.parquet
 */data/*
 data/*

@@ -142,6 +142,7 @@
       "pages": ["Repo-interrelationships.md"]
     }
   },
+  "excluded_repositories": {},
   "unverified_repositories": {
     "The-Strategy-Unit/capacity_conversion_documentation": {
       "reason": "not found in the public repository inventory",

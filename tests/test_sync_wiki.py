@@ -35,6 +35,7 @@ def _write_source_manifest(
     source: Path,
     repositories: dict[str, object],
     unverified_repositories: dict[str, object] | None = None,
+    excluded_repositories: dict[str, object] | None = None,
 ) -> None:
     manifest = {
         "schema_version": 1,
@@ -44,6 +45,7 @@ def _write_source_manifest(
             "commit": "a" * 40,
         },
         "repositories": repositories,
+        "excluded_repositories": excluded_repositories or {},
         "unverified_repositories": unverified_repositories or {},
     }
     (source.parent / sync_wiki.SOURCE_MANIFEST_NAME).write_text(
@@ -190,6 +192,34 @@ def test_validate_source_rejects_unrecorded_repository_link() -> None:
             assert "The-Strategy-Unit/missing" in str(error)
         else:
             raise AssertionError("Expected validation to reject an unrecorded repository")
+
+
+def test_validate_source_accepts_owner_approved_repository_exclusion() -> None:
+    """A linked repository may be classified by an explicit owner exclusion."""
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        source = Path(temporary_directory) / "docs" / "wiki"
+        source.mkdir(parents=True)
+        _write_page(
+            source,
+            "Home.md",
+            "[Private](https://github.com/The-Strategy-Unit/private-source)\n",
+        )
+        _write_source_manifest(
+            source,
+            {},
+            excluded_repositories={
+                "The-Strategy-Unit/private-source": {
+                    "reason": "Owner confirmed this source is intentionally private",
+                    "pages": ["Home.md"],
+                    "approved_by": "@wiki-owner",
+                    "approved_at": "2026-10-09T12:00:00Z",
+                }
+            },
+        )
+
+        pages = sync_wiki.validate_source(source)
+
+        assert list(pages) == ["Home.md"]
 
 
 def test_synchronize_copies_changed_and_missing_pages() -> None:

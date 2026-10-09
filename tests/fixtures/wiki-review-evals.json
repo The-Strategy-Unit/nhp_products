@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "approved_for_scheduling": false,
+  "cases": [
+    {
+      "name": "detect-stale-public-product-name",
+      "source": {
+        "source_kind": "public_git",
+        "source_id": "The-Strategy-Unit/eval-stale-name",
+        "handling": {
+          "classification": "public",
+          "policy": "public-repository-v1",
+          "public_report": true
+        },
+        "previous_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "current_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "allowed_pages": ["Home.md"],
+        "review_paths": ["README.md"],
+        "review_mode": "incremental",
+        "pages": {
+          "Home.md": "# NHP\n\nNHP is the current public name of the product.\n"
+        },
+        "compare_url": "https://github.com/The-Strategy-Unit/eval-stale-name/compare/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "changed_paths": [
+          {"status": "M", "old_path": "README.md", "path": "README.md"}
+        ],
+        "excluded_paths": [],
+        "fragments": [
+          {
+            "locator": "README.md#snapshot-1",
+            "kind": "snapshot",
+            "path": "README.md",
+            "revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "line_start": 1,
+            "citable": true,
+            "content": "# OpenPlan\n\nThe former product name NHP is retired. The public product name is OpenPlan.\n"
+          }
+        ],
+        "complete": true,
+        "blockers": []
+      },
+      "expected": {
+        "disposition": "edit",
+        "required_new_text": ["OpenPlan"]
+      }
+    },
+    {
+      "name": "preserve-current-public-claim",
+      "source": {
+        "source_kind": "public_git",
+        "source_id": "The-Strategy-Unit/eval-current-name",
+        "handling": {
+          "classification": "public",
+          "policy": "public-repository-v1",
+          "public_report": true
+        },
+        "previous_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "current_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "allowed_pages": ["Home.md"],
+        "review_paths": ["README.md"],
+        "review_mode": "incremental",
+        "pages": {
+          "Home.md": "# OpenPlan\n\nOpenPlan is the current public name of the product.\n"
+        },
+        "compare_url": "https://github.com/The-Strategy-Unit/eval-current-name/compare/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "changed_paths": [
+          {"status": "M", "old_path": "README.md", "path": "README.md"}
+        ],
+        "excluded_paths": [],
+        "fragments": [
+          {
+            "locator": "README.md#snapshot-1",
+            "kind": "snapshot",
+            "path": "README.md",
+            "revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "line_start": 1,
+            "citable": true,
+            "content": "# OpenPlan\n\nOpenPlan is the current public name of the product.\n"
+          }
+        ],
+        "complete": true,
+        "blockers": []
+      },
+      "expected": {
+        "disposition": "no_change",
+        "required_new_text": []
+      }
+    }
+  ]
+}
