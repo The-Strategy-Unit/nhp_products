@@ -13,6 +13,7 @@ dependencies = [
     "azure-core>=1.32.0",
     "azure-identity>=1.17.1",
     "azure-storage-blob>=12.24.0",
+    "azure-data-tables==12.7.0",
     # Data science core
     "pandas>=2.2.3",
     "numpy>=2.1.3",
