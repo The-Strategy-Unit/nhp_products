@@ -207,8 +207,9 @@ def _track_container_status(metadata: dict[str, str]):
                 )
             # Check for completion and exit
             elif state == "Terminated":
-                logger.error(f"❌ Container terminated with status {detail_status}")
-                return
+                raise RuntimeError(
+                    f"Full results model run terminated with status {detail_status}"
+                )
             elif status.get("status") == "complete":
                 logger.info("✅ Container completed successfully.")
                 return
@@ -302,6 +303,7 @@ def run_scenario_with_full_results(
 
     # Construct and return result paths
     full_results_params = _construct_results_path(params=mod_params)
+    full_results_params["model_run_id"] = container_metadata["model_run_id"]
 
     return full_results_params
 
@@ -343,6 +345,7 @@ def main() -> int:
 
     except (
         ValueError,
+        RuntimeError,
         requests.RequestException,
         EnvironmentVariableError,
         ClientAuthenticationError,
