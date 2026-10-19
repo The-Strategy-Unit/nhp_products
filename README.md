@@ -43,7 +43,7 @@ module docstring for usage.
 ### Produce custom detailed baseline (standard agg type)
 
 This module produces a custom detailed baseline with custom age groups, length of stay
-(LOS) groups, and also suppresses small numbers by grouping together rows where there are 
+(LOS) groups, and also suppresses small numbers by grouping together rows where there are
 counts of <5. Check the `nhpy.custom_baseline_standard` module docstring for usage.
 
 ## Pipeline
@@ -56,6 +56,16 @@ tested with the following use cases:
 - Results path that does not exist
 - Results path that already has full results
 - Results path that does not have full results
+
+When the original scenario has no full results, the pipeline reads its
+`full_results_copy` value from Azure Table Storage. If it is empty, the pipeline
+runs a copy with full results enabled and records the new run ID on the original
+scenario after verifying the copy's full results. The copy is a separate model
+run with a new aggregated results path. Later pipeline runs use that path for
+detailed results without submitting another model run.
+The metadata is read from the model client's `modelruns` table in
+`STORAGE_ACCOUNT`. A missing original metadata row or an unusable recorded copy
+stops the pipeline before another model run is submitted.
 
 Usage:
 
@@ -85,40 +95,18 @@ theme: redux
 layout: dagre
 look: classic
 ---
-%% FLOWCHART CONVENTION GUIDE
-%% ([Text]) - Terminal nodes (Start/End) using rounded rectangles with brackets
-%% [Text] - Process blocks using rectangles for computational or action steps
-%% {Text} - Decision points using diamonds for conditional logic and branching
-%% -->|Label| - Directed arrows with optional labels for flow direction
-%% subgraph - Container for grouping related elements or examples
-
 flowchart TD
-    %% Terminal nodes for entry and exit points
-    Start([Start]) --> UpdateEnv["Update .venv with 'uv sync'"]
-
-    %% Process blocks for actions/operations
-    UpdateEnv --> InputPath["Scenario aggregated-model-results filepath given"]
-    InputPath --> CheckResults{"Does full-model-results exist for scenario?"}
-
-    %% Decision diamond with labeled branches
-    CheckResults -->|YES| RunDetailed["Run detailed results"]
-    CheckResults -->|NO| RunScenario["Run scenario with full-model-results enabled"]
-
-    %% Process flow continuation
-    RunScenario --> RunDetailed
-    RunDetailed --> End([End])
-
-    %% Example data in separate subgraph for clarity
-    subgraph Example
-    ExPath["aggregated-model-results/v4.1/RXX/test-new-server/20250610_112654/"]
-    end
-
-    %% STYLING REFERENCE
-    %% Terminal nodes: ([Text])
-    %% Process blocks: [Text]
-    %% Decision points: {Text}
-    %% Data examples: Placed in subgraphs
-    %% Flow direction: Top to bottom (TD)
+    CheckOriginal{"Original scenario has full results?"}
+    CheckOriginal -->|Yes| UseOriginal["Use original results path"]
+    CheckOriginal -->|No| CheckCopy{"full_results_copy set on original row?"}
+    CheckCopy -->|Yes| VerifyCopy{"Recorded copy valid and has full results?"}
+    VerifyCopy -->|Yes| UseCopy["Use copy results path"]
+    VerifyCopy -->|No| Stop["Stop; do not create another copy"]
+    CheckCopy -->|No| RunCopy["Run and verify a copy with full results enabled"]
+    RunCopy --> RecordCopy["Save copy run ID on original row"]
+    RecordCopy --> UseCopy
+    UseOriginal --> RunDetailed["Generate detailed results"]
+    UseCopy --> RunDetailed
 ```
 
 ## Products

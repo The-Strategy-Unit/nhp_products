@@ -5,7 +5,7 @@ NHP Products Pipeline
 A cross-platform pipeline that integrates various modules to:
 1. Update .venv with 'uv sync'
 2. Check if full-model-results exist for a scenario
-3. Run scenario with full-model-results enabled if needed
+3. Reuse a recorded full-results copy, or run and record one if needed
 4. Run detailed results processing
 
 Usage:
@@ -22,10 +22,10 @@ Configuration:
     - AZ_STORAGE_EP: Azure Storage account URL
     - AZ_STORAGE_RESULTS: Azure Storage container for results
     - AZ_STORAGE_DATA: Azure Storage container for data
+    - STORAGE_ACCOUNT: Azure Storage account for model-run metadata
 
 Exit codes:
     0: Success
-    1: No full results exist and failed to create them
     2: Error occurred (authentication, network, etc.)
     130: Operation cancelled (Ctrl+C)
 """
@@ -47,7 +47,16 @@ from nhpy.check_full_results import check_full_results
 from nhpy.config import ExitCodes
 from nhpy.custom_baseline_standard import produce_custom_suppressed_baseline
 from nhpy.run_detailed_results import run_detailed_results
-from nhpy.run_full_results import run_scenario_with_full_results
+from nhpy.run_full_results import (
+    _extract_scenario_components,
+    run_scenario_with_full_results,
+)
+from nhpy.table_storage import (
+    aggregated_results_path_from_entity,
+    find_entity_by_path,
+    get_entity,
+    set_full_results_copy,
+)
 from nhpy.utils import initialise_connections_and_params
 
 # Initialise colorama with autoreset to avoid colour bleeding
@@ -333,6 +342,136 @@ def ensure_venv() -> bool:
 
 
 # %%
+def _resolve_existing_copy(
+    scenario_path: str,
+    original_entity: dict,
+    account_url: str | None,
+    results_container: str | None,
+) -> str | None:
+    """
+    Resolve a recorded copy and verify that its full results exist.
+
+    Returns None only when no copy is recorded on the original entity.
+    """
+    copy_id = original_entity.get("full_results_copy")
+    if copy_id is None or copy_id == "":
+        return None
+    if not isinstance(copy_id, str):
+        raise ValueError("Recorded full results copy ID must be a string")
+
+    logger.info(f"{INFO_COLOR}Full results copy found in ATS (RowKey: {copy_id}){RESET}")
+    copy_entity = get_entity(
+        partition_key=original_entity["PartitionKey"],
+        row_key=copy_id,
+    )
+    if not copy_entity:
+        raise ValueError(f"Recorded full results copy {copy_id} has no metadata row")
+    copy_path = aggregated_results_path_from_entity(copy_entity)
+    _validate_copy_path(scenario_path, copy_path)
+    if not check_full_results(
+        copy_path, account_url=account_url, container_name=results_container
+    ):
+        raise ValueError(f"Recorded full results copy {copy_id} has no full results")
+
+    logger.info(f"{SUCCESS_COLOR}Using existing copy results at:{RESET}")
+    logger.info(f"  {copy_path}")
+    return copy_path
+
+
+def _validate_copy_path(scenario_path: str, copy_path: str) -> None:
+    """Ensure the copy belongs to the same model version, dataset, and scenario."""
+    original = _extract_scenario_components(scenario_path)
+    copy = _extract_scenario_components(copy_path)
+    if original[:3] != copy[:3]:
+        raise ValueError("Full results copy path does not match the original scenario")
+
+
+def _create_copy_and_record(
+    scenario_path: str,
+    original_entity: dict,
+    account_url: str | None,
+    results_container: str | None,
+) -> str:
+    """
+    Run a full results copy scenario and record it in ATS.
+
+    Returns the copy's aggregated_results_path.
+    """
+    logger.info(f"{INFO_COLOR}No full results copy found.{RESET}")
+    logger.info(f"{INFO_COLOR}Running scenario with full_model_results enabled...{RESET}")
+    logger.info("This operation may take several minutes to complete.")
+
+    result_paths = run_scenario_with_full_results(
+        results_path=scenario_path,
+        account_url=account_url,
+        container_name=results_container,
+    )
+
+    copy_path = result_paths.get("aggregated_results_path")
+    copy_id = result_paths.get("model_run_id")
+    if (
+        not isinstance(copy_path, str)
+        or not copy_path
+        or not isinstance(copy_id, str)
+        or not copy_id
+    ):
+        raise ValueError(
+            "Full results run did not return a results path and model run ID"
+        )
+    _validate_copy_path(scenario_path, copy_path)
+    logger.info(f"{SUCCESS_COLOR}Full model results generated at:{RESET}")
+    logger.info(f"  {copy_path}")
+
+    if not check_full_results(
+        copy_path, account_url=account_url, container_name=results_container
+    ):
+        raise ValueError(f"Full results are missing for completed copy {copy_id}")
+
+    set_full_results_copy(
+        partition_key=original_entity["PartitionKey"],
+        row_key=original_entity["RowKey"],
+        copy_row_key=copy_id,
+    )
+    logger.info(f"{SUCCESS_COLOR}Recorded full results copy in ATS.{RESET}")
+
+    return copy_path
+
+
+def _select_results_path(args: argparse.Namespace) -> str:
+    """Use original full results, a verified prior copy, or a new recorded copy."""
+    logger.info(f"{INFO_COLOR}Checking if full model results exist for:{RESET}")
+    logger.info(f"  {args.scenario_path}")
+    if check_full_results(
+        args.scenario_path,
+        account_url=args.account_url,
+        container_name=args.results_container,
+    ):
+        logger.info(f"{INFO_COLOR}Full model results already exist{RESET}")
+        return args.scenario_path
+
+    original_entity = find_entity_by_path(args.scenario_path)
+    if not original_entity or any(
+        not isinstance(original_entity.get(key), str) or not original_entity[key]
+        for key in ("PartitionKey", "RowKey")
+    ):
+        raise ValueError("No Azure Table Storage metadata found for scenario")
+
+    copy_path = _resolve_existing_copy(
+        args.scenario_path,
+        original_entity,
+        args.account_url,
+        args.results_container,
+    )
+    if copy_path is not None:
+        return copy_path
+    return _create_copy_and_record(
+        args.scenario_path,
+        original_entity,
+        args.account_url,
+        args.results_container,
+    )
+
+
 def main() -> int:
     """
     Main pipeline implementing the flowchart
@@ -384,53 +523,13 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
+        _extract_scenario_components(args.scenario_path)
         # Step 1: Update .venv with 'uv sync' (ensuring it exists and is activated)
         if not ensure_venv():
             logger.warning("Virtual environment setup or update failed")
             return ExitCodes.EXCEPTION_CODE
 
-        # Step 2: Check if full model results exist
-        logger.info(f"{INFO_COLOR}Checking if full model results exist for:{RESET}")
-        logger.info(f"  {args.scenario_path}")
-        full_results_exist = check_full_results(
-            args.scenario_path,
-            account_url=args.account_url,
-            container_name=args.results_container,
-        )
-
-        # Step 3: If full model results don't exist, run scenario with full results
-        scenario_path_for_detailed = args.scenario_path
-
-        if not full_results_exist:
-            logger.info(f"{INFO_COLOR}Full model results don't exist.{RESET}")
-            logger.info(
-                f"{INFO_COLOR}Running scenario with full_model_results enabled...{RESET}"
-            )
-            logger.info("This operation may take several minutes to complete.")
-
-            try:
-                # Set expectations for long-running operation
-                logger.info(f"{INFO_COLOR}Starting model run with full results{RESET}")
-                logger.info(f"{INFO_COLOR}(please be patient)...{RESET}")
-
-                result_paths = run_scenario_with_full_results(
-                    results_path=args.scenario_path,
-                    account_url=args.account_url,
-                    container_name=args.results_container,
-                )
-
-                # Update scenario path to the new results
-                scenario_path_for_detailed = result_paths["aggregated_results_path"]
-                logger.info(f"{SUCCESS_COLOR}Full model results generated at:{RESET}")
-                logger.info(f"  {scenario_path_for_detailed}")
-
-            except Exception as e:
-                logger.error(
-                    f"{ERROR_COLOR}Failed to run scenario with full results: {e}{RESET}"
-                )
-                return ExitCodes.EXCEPTION_CODE
-        else:
-            logger.info(f"{INFO_COLOR}Full model results already exist{RESET}")
+        scenario_path_for_detailed = _select_results_path(args)
 
         # Step 4: Run detailed results
         logger.info(f"{INFO_COLOR}Running detailed results for:{RESET}")
