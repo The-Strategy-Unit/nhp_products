@@ -17,6 +17,13 @@ For many of the scripts to work, you will need environment variables in a `.env`
 file from a member of the Data Science team. The variables required are listed
 in `SAMPLE.env`.
 
+## Wiki documentation
+
+The Markdown source for the repository's GitHub Wiki is version-controlled in
+[`docs/wiki`](docs/wiki). Propose Wiki changes there through the normal pull
+request process; do not edit the published Wiki directly. The publishing and
+safety controls are described in [`docs/README.md`](docs/README.md).
+
 ## Using this repository
 
 We use `uv` for dependency management in this repository. The instructions in
