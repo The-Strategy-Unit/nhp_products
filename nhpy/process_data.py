@@ -45,13 +45,16 @@ def process_ip_results(data: pd.DataFrame, los_groups: defaultdict) -> pd.DataFr
     return data
 
 
-def process_ip_activity_avoided(data: pd.DataFrame) -> pd.DataFrame:
+def process_ip_activity_avoided(
+    data: pd.DataFrame, groupby_cols=["sushrg", "los_group", "pod"]
+) -> pd.DataFrame:
     """
     Process the IP activity_avoided, adding pod and age_group,
-    and grouping by HRG, los_group and pod
+    and grouping by desired columns
 
     Args:
         data: the IP rows avoided
+        groupby_cols: the columns to groupby. Defaults to sushrg, los_group and pod
 
     Returns:
         The processed and aggregated data
@@ -65,7 +68,7 @@ def process_ip_activity_avoided(data: pd.DataFrame) -> pd.DataFrame:
     )
     data = process_ip_results(data, los_groups_aa)
     # Explicitly cast the result to DataFrame to satisfy type checking
-    grouped_data = data.groupby(["sushrg", "los_group", "pod"], dropna=False)[
+    grouped_data = data.groupby(groupby_cols, dropna=False)[
         ["admissions", "beddays", "procedures"]
     ].sum()
     data = pd.DataFrame(grouped_data)
@@ -80,7 +83,7 @@ def process_ip_activity_avoided(data: pd.DataFrame) -> pd.DataFrame:
         "attendances"
     )
     data = data.reset_index()
-    data = data.groupby(["pod", "los_group", "sushrg", "measure"]).sum()
+    data = data.groupby(groupby_cols + ["measure"]).sum()
 
     return data
 
