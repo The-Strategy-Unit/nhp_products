@@ -1,0 +1,176 @@
+name: Wiki
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/wiki.yaml"
+      - "docs/**"
+      - "scripts/sync_wiki.py"
+      - "tests/test_sync_wiki.py"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/wiki.yaml"
+      - "docs/wiki/**"
+      - "docs/wiki-sources.json"
+      - "scripts/sync_wiki.py"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish after validation instead of performing a dry run
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  validate:
+    name: Validate Wiki source
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Validate pages
+        run: python scripts/sync_wiki.py validate docs/wiki
+      - name: Install pytest
+        run: python -m pip install --disable-pip-version-check pytest==9.0.3
+      - name: Test synchronizer
+        run: python -m pytest tests/test_sync_wiki.py
+      - name: Preflight synchronization against the current Wiki
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git clone \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" \
+            "$RUNNER_TEMP/wiki-preflight"
+          python scripts/sync_wiki.py sync \
+            docs/wiki "$RUNNER_TEMP/wiki-preflight"
+
+  publish:
+    name: Publish Wiki
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && vars.WIKI_AUTO_PUBLISH == 'true'))
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: wiki
+    concurrency:
+      group: wiki-publish
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Clone current Wiki
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git clone \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" \
+            "$RUNNER_TEMP/wiki"
+      - name: Synchronize reviewed pages
+        run: python scripts/sync_wiki.py sync docs/wiki "$RUNNER_TEMP/wiki"
+      - name: Prepare Wiki commit
+        id: prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish }}
+        run: |
+          git -C "$RUNNER_TEMP/wiki" config user.name "github-actions[bot]"
+          git -C "$RUNNER_TEMP/wiki" config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          previous_sha=$(git -C "$RUNNER_TEMP/wiki" rev-parse HEAD)
+          git -C "$RUNNER_TEMP/wiki" add -- '*.md'
+          commit_ready=false
+
+          if git -C "$RUNNER_TEMP/wiki" diff --cached --quiet -- '*.md'; then
+            echo "Wiki is already up to date."
+            if [[ "$DRY_RUN" == "true" ]]; then
+              git -C "$RUNNER_TEMP/wiki" commit --allow-empty -m \
+                "Verify Wiki publishing from nhp_products@${GITHUB_SHA:0:12}"
+              commit_ready=true
+            fi
+          else
+            git -C "$RUNNER_TEMP/wiki" commit -m \
+              "Sync Wiki from nhp_products@${GITHUB_SHA:0:12}"
+            commit_ready=true
+          fi
+
+          candidate_sha=$(git -C "$RUNNER_TEMP/wiki" rev-parse HEAD)
+          if [[ "$commit_ready" == "true" ]]; then
+            candidate_parent=$(git -C "$RUNNER_TEMP/wiki" rev-parse HEAD^)
+            if [[ "$candidate_parent" != "$previous_sha" ]]; then
+              echo "Wiki candidate does not preserve the current history." >&2
+              exit 1
+            fi
+          fi
+
+          echo "previous_sha=$previous_sha" >> "$GITHUB_OUTPUT"
+          echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+          echo "commit_ready=$commit_ready" >> "$GITHUB_OUTPUT"
+          git -C "$RUNNER_TEMP/wiki" remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git"
+      - name: Refuse a stale source revision
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          current_main=$(git rev-parse FETCH_HEAD)
+          if [[ "$current_main" != "$GITHUB_SHA" ]]; then
+            echo "Refusing to publish stale source revision $GITHUB_SHA." >&2
+            echo "Current main revision is $current_main." >&2
+            exit 1
+          fi
+      - name: Preview authenticated Wiki push
+        id: dry_run
+        if: github.event_name == 'workflow_dispatch' && !inputs.publish
+        run: git -C "$RUNNER_TEMP/wiki" push --dry-run origin HEAD
+      - name: Push Wiki commit
+        id: push
+        if: >-
+          steps.prepare.outputs.commit_ready == 'true' &&
+          (github.event_name == 'push' || inputs.publish)
+        run: |
+          git -C "$RUNNER_TEMP/wiki" push origin HEAD
+      - name: Record Wiki publication metadata
+        if: always() && steps.prepare.outcome == 'success'
+        env:
+          CANDIDATE_SHA: ${{ steps.prepare.outputs.candidate_sha }}
+          COMMIT_READY: ${{ steps.prepare.outputs.commit_ready }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish }}
+          DRY_RUN_OUTCOME: ${{ steps.dry_run.outcome }}
+          PREVIOUS_SHA: ${{ steps.prepare.outputs.previous_sha }}
+          PUSH_OUTCOME: ${{ steps.push.outcome }}
+        run: |
+          if [[ "$DRY_RUN" == "true" ]]; then
+            result="Dry run ${DRY_RUN_OUTCOME}; the Wiki was not changed"
+          elif [[ "$COMMIT_READY" != "true" ]]; then
+            result="No content changes"
+          elif [[ "$PUSH_OUTCOME" == "success" ]]; then
+            result="Published"
+          else
+            result="Push ${PUSH_OUTCOME}"
+          fi
+
+          {
+            echo "### Wiki publication"
+            echo
+            echo "| Item | Revision |"
+            echo "| --- | --- |"
+            echo "| Source repository | \`${GITHUB_SHA}\` |"
+            echo "| Previous Wiki | \`${PREVIOUS_SHA}\` |"
+            echo "| Candidate Wiki | \`${CANDIDATE_SHA}\` |"
+            echo
+            echo "Result: ${result}."
+          } >> "$GITHUB_STEP_SUMMARY"

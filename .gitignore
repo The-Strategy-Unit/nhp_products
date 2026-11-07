@@ -39,8 +39,10 @@ vignettes/*.pdf
 # R Environment Variables
 .Renviron
 
-# pkgdown site
-docs/
+# Generated pkgdown site. The Wiki source and its maintenance guide are tracked.
+/docs/*
+!/docs/wiki/
+!/docs/README.md
 
 # translation temp files
 po/*~
@@ -103,6 +105,7 @@ Thumbs.db
 # Data
 *.csv
 *.json
+!/docs/wiki-sources.json
 *.parquet
 */data/*
 data/*

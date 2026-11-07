@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-10-07T14:56:06Z",
+  "wiki_baseline": {
+    "repository": "The-Strategy-Unit/nhp_products.wiki",
+    "commit": "d22e900aeb2315313f6556a26599e7504dd03f59"
+  },
+  "repositories": {
+    "The-Strategy-Unit/azkit": {
+      "branch": "main",
+      "head": "062d49501dd8f2e46c575123015034b622c8542c",
+      "pages": ["Model-results.md"]
+    },
+    "The-Strategy-Unit/nhp-api-v2": {
+      "branch": "main",
+      "head": "2ad2a2d539ad6a704740dc8986b31ae5f6064e5c",
+      "pages": ["How-to-run-the-provider-level-model.md", "List-of-all-NHP-repos.md"]
+    },
+    "The-Strategy-Unit/nhp_CPMA_community": {
+      "branch": "main",
+      "head": "7fad95028607a433bc349c8b450e6001615f3bd1",
+      "pages": ["List-of-all-NHP-repos.md"]
+    },
+    "The-Strategy-Unit/nhp_aci": {
+      "branch": "main",
+      "head": "31333a6cbf9d644ad8937a5bced887d838501be1",
+      "pages": ["How-to-run-the-provider-level-model.md", "List-of-all-NHP-repos.md"]
+    },
+    "The-Strategy-Unit/nhp_ats_backup": {
+      "branch": "main",
+      "head": "62d659c273aac055e6af051a7869b5d7a820d6de",
+      "pages": ["List-of-all-NHP-repos.md", "NHP-ATS-table-backup.md"]
+    },
+    "The-Strategy-Unit/nhp_ats_tui": {
+      "branch": "main",
+      "head": "08eff20b9136476195d52eaab20922a8f192a452",
+      "pages": ["List-of-all-NHP-repos.md"]
+    },
+    "The-Strategy-Unit/nhp_capacity_conversion_logic": {
+      "branch": "main",
+      "head": "944f6903801fcc29c3e44b0e880cd63b04a074cd",
+      "pages": ["How-to-run-capacity-conversion-model.md", "List-of-all-NHP-repos.md", "Repo-interrelationships.md"]
+    },
+    "The-Strategy-Unit/nhp_compare_mitigation_predictions_app": {
+      "branch": "main",
+      "head": "9d8bef387467e0c0f3245b0b2921eceb33377d11",
+      "pages": ["List-of-all-NHP-repos.md", "Repo-interrelationships.md"]
+    },
+    "The-Strategy-Unit/nhp_data": {
+      "branch": "main",
+      "head": "cd88d8ce432b877cefdee134d7eee1280e52ac57",
+      "pages": ["Data.md", "How-to-run-capacity-conversion-model.md", "List-of-all-NHP-repos.md", "Repo-interrelationships.md"]
+    },
+    "The-Strategy-Unit/nhp_elicitation_tool": {
+      "branch": "main",
+      "head": "b049ec7cfbc7afb0691f923bcaf740e1dba656d8",
+      "pages": ["List-of-all-NHP-repos.md"]
+    },
+    "The-Strategy-Unit/nhp_evidence_maps": {
+      "branch": "main",
+      "head": "07329b24e6b25769515e98194e449089d6123015",
+      "pages": ["List-of-all-NHP-repos.md"]
+    },
+    "The-Strategy-Unit/nhp_functional_area_mapping": {
+      "branch": "main",
+      "head": "d17ecfd6fd429324a67ba30151c8e284207187d9",
+      "pages": ["How-to-run-capacity-conversion-model.md", "List-of-all-NHP-repos.md"]
+    },
+    "The-Strategy-Unit/nhp_inputs": {
+      "branch": "main",
+      "head": "bea9618fd8d0d63f987b65d9f199394932511e13",
+      "pages": ["List-of-all-NHP-repos.md", "Misc-tasks.md", "Repo-interrelationships.md"]
+    },
+    "The-Strategy-Unit/nhp_inputs_selection_app": {
+      "branch": "main",
+      "head": "c57fe9a95b88c261e8c93817d6d90cebe6da6c2d",
+      "pages": ["List-of-all-NHP-repos.md"]
+    },
+    "The-Strategy-Unit/nhp_model": {
+      "branch": "main",
+      "head": "04b19760c04294aeb1ed56983b3c6bd0fd83799a",
+      "pages": ["How-to-run-the-ICB-and-national-level-models.md", "How-to-run-the-provider-level-model.md", "List-of-all-NHP-repos.md", "Repo-interrelationships.md"]
+    },
+    "The-Strategy-Unit/nhp_model_databricks": {
+      "branch": "main",
+      "head": "4338c05d1d71afd9f1475e11bb84bc22896a1e04",
+      "pages": ["How-to-run-the-ICB-and-national-level-models.md", "List-of-all-NHP-repos.md", "Repo-interrelationships.md"]
+    },
+    "The-Strategy-Unit/nhp_output_reports": {
+      "branch": "main",
+      "head": "91c9bf448e257d3481f4756aaef1972f9cbc7286",
+      "pages": ["List-of-all-NHP-repos.md", "Repo-interrelationships.md"]
+    },
+    "The-Strategy-Unit/nhp_outputs": {
+      "branch": "main",
+      "head": "e3405b29accb6ee98d0e675ae912860bfba741db",
+      "pages": ["List-of-all-NHP-repos.md", "Model-results.md", "Repo-interrelationships.md"]
+    },
+    "The-Strategy-Unit/nhp_products": {
+      "branch": "main",
+      "head": "0a04f50a2f94a9a5d2c62690087209a79fcb01b6",
+      "pages": ["How-to-run-capacity-conversion-model.md", "List-of-all-NHP-repos.md", "Model-results.md", "Repo-interrelationships.md"]
+    },
+    "The-Strategy-Unit/nhp_reskit": {
+      "branch": "main",
+      "head": "cf8acf73d49858cc74634c5e3f8b9f086843df0d",
+      "pages": ["List-of-all-NHP-repos.md", "Model-results.md", "Repo-interrelationships.md"]
+    },
+    "The-Strategy-Unit/nhp_scenario_comparisons": {
+      "branch": "main",
+      "head": "ddef5544c51a0ff824a0756434e87919a55804ff",
+      "pages": ["List-of-all-NHP-repos.md", "Repo-interrelationships.md"]
+    },
+    "The-Strategy-Unit/nhp_set_model_params": {
+      "branch": "main",
+      "head": "bc50320a01f30b7f7a9b7a399bd06d7184860f6f",
+      "pages": ["List-of-all-NHP-repos.md", "Repo-interrelationships.md"]
+    },
+    "The-Strategy-Unit/nhp_tagged_runs": {
+      "branch": "main",
+      "head": "e65e455e5644d80e7e6d25b5a722a7a77387bf88",
+      "pages": ["List-of-all-NHP-repos.md"]
+    },
+    "The-Strategy-Unit/nhp_tagged_runs_params": {
+      "branch": "main",
+      "head": "16fcd48365d0cd64ae0c242b97ff6f42438282e5",
+      "pages": ["List-of-all-NHP-repos.md"]
+    },
+    "The-Strategy-Unit/nhp_tpma_rationale": {
+      "branch": "main",
+      "head": "ea6647f798a4380b5a399cd040156258a4fdab4d",
+      "pages": ["List-of-all-NHP-repos.md"]
+    },
+    "The-Strategy-Unit/open-plan-docs": {
+      "branch": "main",
+      "head": "be79fa4836fdf5efefa915e9c48febfc86c83ed2",
+      "pages": ["Documentation.md"]
+    },
+    "The-Strategy-Unit/tpma-explorer": {
+      "branch": "main",
+      "head": "4a7808b82565a15ab2d02b018f6641d6cfb1e012",
+      "pages": ["Repo-interrelationships.md"]
+    }
+  },
+  "unverified_repositories": {
+    "The-Strategy-Unit/capacity_conversion_documentation": {
+      "reason": "not found in the public repository inventory",
+      "pages": ["List-of-all-NHP-repos.md"]
+    },
+    "The-Strategy-Unit/nhp_analysis": {
+      "reason": "marked private in the Wiki",
+      "pages": ["List-of-all-NHP-repos.md"]
+    },
+    "The-Strategy-Unit/nhp_output_adhocs": {
+      "reason": "marked private in the Wiki",
+      "pages": ["List-of-all-NHP-repos.md"]
+    },
+    "The-Strategy-Unit/nhp_planning": {
+      "reason": "not found in the public repository inventory",
+      "pages": ["List-of-all-NHP-repos.md"]
+    }
+  }
+}
